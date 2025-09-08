@@ -4,7 +4,6 @@ import AppInterface from './AppInterface';
 import Cookies from "js-cookie";
 import { JsonValue } from '@viamrobotics/sdk';
 import { Pass } from './AppInterface';
-import { createNotesManager } from './lib/notesManager';
 
 /*
 TODO:
@@ -33,9 +32,8 @@ function App() {
   const [passSummaries, setPassSummaries] = useState<Pass[]>([]);
   const [files, setFiles] = useState<VIAM.dataApi.BinaryData[]>([]);
   const [viamClient, setViamClient] = useState<VIAM.ViamClient | null>(null);
-  // const [sanderClient, setSanderClient] = useState<VIAM.GenericComponentClient | null>(null);
   const [robotClient, setRobotClient] = useState<VIAM.RobotClient | null>(null);
-  // const [sanderWarning, setSanderWarning] = useState<string | null>(null); // Warning state
+  const [partId, setPartId] = useState<string>(''); // Add partId state
 
   const machineNameMatch = window.location.pathname.match(machineNameRegex);
   const machineName = machineNameMatch ? machineNameMatch[1] : null;
@@ -146,28 +144,10 @@ function App() {
       const tabularData = await viamClient.dataClient.tabularDataByMQL(orgID, mqlQuery);
       console.log("Tabular Data:", tabularData);
 
-      // Test the new NotesManager
+      // Set partId in state
       if (tabularData && tabularData.length > 0) {
-        const firstPass = (tabularData[0] as any).data?.readings?.pass_id;
-        const partId = (tabularData[0] as any).part_id;
-        
-        if (firstPass && partId) {
-          console.log(`Found pass ID for testing: ${firstPass}`);
-          
-          // Create NotesManager instance
-          const notesManager = createNotesManager(viamClient, machineId);
-          
-          try {
-            // Test saving a note
-            await notesManager.savePassNote(firstPass, "This is a test note created at " + new Date().toLocaleString(), partId);
-            
-            // Test retrieving the note
-            const notes = await notesManager.fetchPassNotes(firstPass);
-            console.log("Retrieved test notes:", notes);
-          } catch (error) {
-            console.error("Failed to test notes functionality:", error);
-          }
-        }
+        const extractedPartId = (tabularData[0] as any).part_id;
+        setPartId(extractedPartId || '');
       }
     
       // Process tabular data into pass summaries
@@ -228,17 +208,14 @@ function App() {
 
   return (
     <AppInterface 
-
-
       machineName={machineName}
-
       viamClient={viamClient!}
-      passSummaries={passSummaries} // Pass the actual summaries
+      passSummaries={passSummaries}      
       files={files}
       robotClient={robotClient}
-      // sanderClient={null}
-      // sanderWarning={sanderWarning} // Pass the sanding warning
       fetchVideos={fetchVideos}
+      machineId={machineId}
+      partId={partId} // Now using the state variable
     />
   );
 }

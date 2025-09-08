@@ -3,6 +3,7 @@ import * as VIAM from "@viamrobotics/sdk";
 import './AppInterface.css';
 import StepVideosGrid from './StepVideosGrid';
 import VideoStoreSelector from './VideoStoreSelector';
+import PassNotes from './PassNotes';
 import { 
   formatDurationToMinutesSeconds,
 } from './lib/videoUtils';
@@ -11,13 +12,11 @@ interface AppViewProps {
   passSummaries?: any[];
   files: VIAM.dataApi.BinaryData[];
   viamClient: VIAM.ViamClient;
-
-
-  // sanderClient: VIAM.GenericComponentClient | null;
   robotClient?: VIAM.RobotClient | null;
-  // sanderWarning?: string | null;
   fetchVideos: () => Promise<void>;
   machineName: string | null;
+  machineId: string; // Add machineId prop
+  partId: string; // Add partId prop
 }
 export interface Step {
   name: string;
@@ -39,16 +38,14 @@ export interface Pass {
 
 
 const AppInterface: React.FC<AppViewProps> = ({ 
-
   machineName,
   viamClient,
   passSummaries = [],
   files: files, 
-  // sanderClient, 
   robotClient,
-  // sanderWarning
-
   fetchVideos,
+  machineId, // Add machineId
+  partId, // Add partId
 }) => {
   const [activeRoute, setActiveRoute] = useState('live');
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
@@ -305,7 +302,7 @@ const AppInterface: React.FC<AppViewProps> = ({
                                     })}
                                   </div>
                                 
-                                  {/* New section for all files in pass time range */}
+                                  {/* Files section */}
                                   {(() => {
                                     const passStart = new Date(pass.start);
                                     const passEnd = new Date(pass.end);
@@ -331,21 +328,22 @@ const AppInterface: React.FC<AppViewProps> = ({
                                       return timeA - timeB;
                                     })
 
-                                    // Only render the section if there are files
-                                    if (passFiles.length === 0) {
-                                      return <div className="pass-files-section">
-                                        <h4>
-                                          Files captured during this pass
-                                        </h4>
-                                        <p>
-                                          No files found
-                                        </p>
-                                        </div>
-                                    }
-                                    
-                                    return (
+                                    // Files section (existing code)
+                                    const filesSection = passFiles.length === 0 ? (
                                       <div className="pass-files-section">
-                                        <h4>
+                                        <h4>Files captured during this pass</h4>
+                                        <p>No files found</p>
+                                      </div>
+                                    ) : (
+                                      <div className="pass-files-section">
+                                        <h4 style={{
+                                          position: 'sticky',
+                                          top: 0,
+                                          backgroundColor: '#fafafa',
+                                          zIndex: 1,
+                                          margin: 0,
+                                          padding: '0 0 8px 4px',
+                                        }}>
                                           Files captured during this pass
                                         </h4>
                                         
@@ -353,7 +351,6 @@ const AppInterface: React.FC<AppViewProps> = ({
                                           display: 'flex',
                                           flexWrap: 'wrap',
                                           gap: '8px',
-                                          maxHeight: '400px',
                                           overflowY: 'auto',
                                           padding: '4px'
                                         }}>
@@ -376,7 +373,7 @@ const AppInterface: React.FC<AppViewProps> = ({
                                                   transition: 'all 0.2s ease',
                                                   flex: '1 0 calc(50% - 8px)',
                                                   minWidth: '280px',
-                                                  maxWidth: '100%',
+                                                  maxWidth: 'calc(50% - 10px)',
                                                   boxSizing: 'border-box'
                                                 }}
                                                 onMouseEnter={(e) => {
@@ -388,6 +385,7 @@ const AppInterface: React.FC<AppViewProps> = ({
                                                   e.currentTarget.style.transform = 'translateY(0)';
                                                 }}
                                               >
+                                                {/* ...existing file display logic... */}
                                                 <div style={{ 
                                                   display: 'flex', 
                                                   alignItems: 'center', 
@@ -467,6 +465,20 @@ const AppInterface: React.FC<AppViewProps> = ({
                                         </div>
                                       </div>
                                     );
+
+                                    return (
+                                      <>
+                                        {filesSection}
+                                        
+                                        {/* New Notes section */}
+                                        <PassNotes
+                                          passId={pass.pass_id}
+                                          viamClient={viamClient}
+                                          machineId={machineId}
+                                          partId={partId}
+                                        />
+                                      </>
+                                    );
                                   })()}
                                 </div>
                               </div>
@@ -482,28 +494,8 @@ const AppInterface: React.FC<AppViewProps> = ({
           </>
         ) : (
           null
-          // <section>
-          //   {/* Add warning banner here, only in Robot Operator tab */}
-          //   {sanderWarning && (
-          //     <div className="warning-banner" style={{
-          //       backgroundColor: '#FEF3C7',
-          //       color: '#92400E',
-          //       padding: '12px 16px',
-          //       borderRadius: '8px',
-          //       display: 'flex',
-          //       alignItems: 'center',
-          //       gap: '8px',
-          //       marginBottom: '16px'
-          //     }}>
-          //       <span>⚠️</span>
-          //       <span>{sanderWarning}</span>
-          //     </div>
-          //   )}
-          //   <RobotOperator sanderClient={sanderClient} robotClient={robotClient} />
-          // </section>
         )}
       </main>
-      
     </div>
   );
 };

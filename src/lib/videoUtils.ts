@@ -1,11 +1,15 @@
 import * as VIAM from "@viamrobotics/sdk";
 import { Step } from "../AppInterface";
 
-export const createVideoStreamFromBase64 = (base64Data: Uint8Array): string | null => {
+export const createVideoStreamFromBase64 = (base64Data: Uint8Array | ArrayBuffer): string | null => {
   try {
     console.log("Creating video stream from base64...");
 
-    const blob = new Blob([base64Data], { type: 'video/mp4' });
+    const uint8 = base64Data instanceof Uint8Array ? base64Data : new Uint8Array(base64Data);
+    // Copy into a fresh ArrayBuffer to ensure it is an ArrayBuffer (not SharedArrayBuffer) acceptable as a BlobPart
+    const buffer = new ArrayBuffer(uint8.byteLength);
+    new Uint8Array(buffer).set(uint8);
+    const blob = new Blob([buffer], { type: 'video/mp4' });
     const url = URL.createObjectURL(blob);
 
     console.log("Video stream URL created successfully");
@@ -64,17 +68,17 @@ const formatDateToVideoStoreFormat = (date: Date): string => {
 };
 
 export const generateVideo = async (
-  videoStoreClient: VIAM.GenericComponentClient, 
+  videoStoreClient: VIAM.GenericComponentClient,
   step: Step) => {
-    console.log("generateVideo called for step", step);
-    console.log("formatDateToVideoStoreFormat(step.end)", formatDateToVideoStoreFormat(step.end));
-    console.log("formatDateToVideoStoreFormat(step.start)", formatDateToVideoStoreFormat(step.start));
-    const command = VIAM.Struct.fromJson({
-      "command": "save",
-      "to": formatDateToVideoStoreFormat(step.end),
-      "from": formatDateToVideoStoreFormat(step.start),
-      "metadata": `${step.pass_id}${step.name}`,
-    });
+  console.log("generateVideo called for step", step);
+  console.log("formatDateToVideoStoreFormat(step.end)", formatDateToVideoStoreFormat(step.end));
+  console.log("formatDateToVideoStoreFormat(step.start)", formatDateToVideoStoreFormat(step.start));
+  const command = VIAM.Struct.fromJson({
+    "command": "save",
+    "to": formatDateToVideoStoreFormat(step.end),
+    "from": formatDateToVideoStoreFormat(step.start),
+    "metadata": `${step.pass_id}${step.name}`,
+  });
 
-    return await videoStoreClient.doCommand(command);
-  };
+  return await videoStoreClient.doCommand(command);
+};

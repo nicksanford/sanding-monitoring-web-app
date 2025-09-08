@@ -184,13 +184,6 @@ export class NotesManager {
     // For now, just create a new note - in the future we could add versioning
     await this.savePassNote(passId, noteText, partId);
   }
-
-  /**
-   * Delete a note (not implemented yet - would require additional logic)
-   */
-  async deletePassNote(passId: string, noteId: string): Promise<void> {
-    throw new Error("Delete functionality not implemented yet");
-  }
 }
 
 /**
