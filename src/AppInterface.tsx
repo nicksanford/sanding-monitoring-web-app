@@ -60,10 +60,10 @@ const AppInterface: React.FC<AppViewProps> = ({
     file.metadata?.fileName?.toLowerCase().endsWith('.mp4')
   );
 
-  const filesByID = files.reduce((acc: any, file: VIAM.dataApi.BinaryData) => {
-    acc[file.metadata!.binaryDataId] = file;
-    return acc;
-  }, {});
+  // const filesByID = files.reduce((acc: any, file: VIAM.dataApi.BinaryData) => {
+  //   acc[file.metadata!.binaryDataId] = file;
+  //   return acc;
+  // }, {});
 
   // const expectedSteps = [
   //   "Imaging",

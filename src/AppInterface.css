@@ -567,7 +567,7 @@ button:focus {
 .passes-container {
   display: flex;
   flex-direction: column;
-  padding: 4px;
+  padding: 8px;
   gap: 1rem;
 }
 
@@ -580,7 +580,13 @@ button:focus {
 }
 
 .pass-files-section {
-  margin: 0 5px;
+  overflow-y: auto;
+  max-height: 200px;
+  margin: 0 0 -7px;
+}
+
+.pass-files-section h4 {
+  margin: 0 0 4px 4px;
 }
 
 .steps-grid {
