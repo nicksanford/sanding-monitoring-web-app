@@ -16,8 +16,8 @@ TODO:
 
 */
 
-const videoStoreName = "video-store-1";
-const sanderName = "sander-module";
+// const videoStoreName = "video-store-1";
+// const sanderName = "sander-module";
 const sandingSummaryName = "sanding-summary";
 const sandingSummaryComponentType = "rdk:component:sensor";
 const locationIdRegex = /main\.([^.]+)\.viam\.cloud/;
@@ -34,7 +34,7 @@ function App() {
   const [viamClient, setViamClient] = useState<VIAM.ViamClient | null>(null);
   // const [sanderClient, setSanderClient] = useState<VIAM.GenericComponentClient | null>(null);
   const [robotClient, setRobotClient] = useState<VIAM.RobotClient | null>(null);
-  const [sanderWarning, setSanderWarning] = useState<string | null>(null); // Warning state
+  // const [sanderWarning, setSanderWarning] = useState<string | null>(null); // Warning state
 
   const machineNameMatch = window.location.pathname.match(machineNameRegex);
   const machineName = machineNameMatch ? machineNameMatch[1] : null;
@@ -159,6 +159,135 @@ function App() {
       const tabularData = await viamClient.dataClient.tabularDataByMQL(orgID, mqlQuery);
       console.log("Tabular Data:", tabularData);
 
+      // Add these functions to test note functionality
+      const savePassNote = async (passId: string, noteText: string) => {
+        if (!viamClient) {
+          console.error("Viam client not initialized");
+          return;
+        }
+        
+        try {
+          const now = new Date();
+          console.log(`Saving note for pass ${passId}: "${noteText}"`);
+          
+          // Fixed: Add proper error checking for tabularData
+          if (!tabularData || tabularData.length === 0) {
+            console.error("No tabular data available to get part ID");
+            return;
+          }
+          
+          const partId = (tabularData[0] as any).part_id;
+          
+          if (!partId) {
+            console.error("No part ID available for upload");
+            return;
+          }
+          
+          // Create a JSON note object
+          const noteData = {
+            pass_id: passId,
+            note_text: noteText,
+            created_at: now.toISOString(),
+            created_by: "web-app"
+          };
+          
+          // Convert to binary data (JSON string as bytes)
+          const noteJson = JSON.stringify(noteData);
+          const binaryData = new TextEncoder().encode(noteJson);
+          
+          // Fixed: Use correct parameter count for binaryDataCaptureUpload
+          await viamClient.dataClient.binaryDataCaptureUpload(
+            binaryData,                     // binary data
+            partId,                         // partId
+            "rdk:component:generic",        // componentType
+            "sanding-notes",                // componentName
+            "SaveNote",                     // methodName
+            ".json",                        // fileExtension
+            [now, now],                     // methodParameters (start and end time)
+            ["sanding-notes"]               // tags (optional)
+          );
+          
+          console.log("Note saved successfully!");
+          
+          // Test retrieval immediately
+          await fetchPassNotes(passId);
+        } catch (error) {
+          console.error("Failed to save note:", error);
+        }
+      };
+    
+      const fetchPassNotes = async (passId: string) => {
+        if (!viamClient) {
+          console.error("Viam client not initialized");
+          return [];
+        }
+        
+        try {
+          // Fixed: Use correct filter properties and cast to unknown first
+          const filter = {
+            robotId: machineId,
+            componentName: "sanding-notes",
+            componentType: "rdk:component:generic",
+            tags: ["sanding-notes"]
+          } as unknown as VIAM.dataApi.Filter;
+          
+          const binaryData = await viamClient.dataClient.binaryDataByFilter(
+            filter,
+            100, // limit
+            VIAM.dataApi.Order.DESCENDING,
+            undefined, // no pagination token
+            false,
+            false,
+            false
+          );
+          
+          // Filter and parse notes for this specific pass
+          const passNotes = [];
+          for (const item of binaryData.data) {
+            try {
+              // Fixed: Use binaryDataByIds instead of binaryDataByID
+              const noteDataArray = await viamClient.dataClient.binaryDataByIds([item.metadata!.binaryDataId!]);
+              if (noteDataArray.length > 0) {
+                // Fixed: Properly access binary data from the response
+                const binaryDataItem = noteDataArray[0];
+                let noteBytes: Uint8Array;
+                
+                if (binaryDataItem.binary) {
+                  noteBytes = binaryDataItem.binary;
+                } else {
+                  console.warn("No binary data found in response");
+                  continue;
+                }
+                
+                const noteJson = new TextDecoder().decode(noteBytes);
+                const noteData = JSON.parse(noteJson);
+                
+                if (noteData.pass_id === passId) {
+                  passNotes.push(noteData);
+                }
+              }
+            } catch (parseError) {
+              console.warn("Failed to parse note data:", parseError);
+            }
+          }
+          
+          console.log("Retrieved notes:", passNotes);
+          return passNotes;
+        } catch (error) {
+          console.error("Failed to fetch notes:", error);
+          return [];
+        }
+      };
+    
+      // Test with the first pass ID if available
+      if (tabularData && tabularData.length > 0) {
+        const firstPass = (tabularData[0] as any).data?.readings?.pass_id;
+        if (firstPass) {
+          console.log(`Found pass ID for testing: ${firstPass}`);
+          savePassNote(firstPass, "This is a test note created at " + new Date().toLocaleString());
+        }
+      }
+    
       // Process tabular data into pass summaries
       const processedPasses: Pass[] = tabularData.map((item: any) => {
         // The actual data is nested in data.readings
