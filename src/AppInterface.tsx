@@ -7,6 +7,7 @@ import PassNotes from './PassNotes';
 import { 
   formatDurationToMinutesSeconds,
 } from './lib/videoUtils';
+import { PassNote } from './lib/notesManager';
 
 interface AppViewProps {
   passSummaries?: any[];
@@ -15,8 +16,10 @@ interface AppViewProps {
   robotClient?: VIAM.RobotClient | null;
   fetchVideos: () => Promise<void>;
   machineName: string | null;
-  machineId: string; // Add machineId prop
-  partId: string; // Add partId prop
+  machineId: string;
+  partId: string;
+  passNotes: Map<string, PassNote[]>;
+  onNotesUpdate: React.Dispatch<React.SetStateAction<Map<string, PassNote[]>>>;
 }
 export interface Step {
   name: string;
@@ -44,8 +47,10 @@ const AppInterface: React.FC<AppViewProps> = ({
   files: files, 
   robotClient,
   fetchVideos,
-  machineId, // Add machineId
-  partId, // Add partId
+  machineId,
+  partId,
+  passNotes,
+  onNotesUpdate,
 }) => {
   const [activeRoute, setActiveRoute] = useState('live');
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
@@ -472,7 +477,6 @@ const AppInterface: React.FC<AppViewProps> = ({
                                         maxWidth: '100%',
                                         overflow: 'hidden'
                                       }}>
-                                        {/* Files section - Left column - 50% width */}
                                         <div style={{ 
                                           flex: '1 1 calc(50% - 6px)',
                                           minWidth: 0,
@@ -481,7 +485,6 @@ const AppInterface: React.FC<AppViewProps> = ({
                                           {filesSection}
                                         </div>
                                         
-                                        {/* Notes section - Right column - 50% width */}
                                         <div style={{ 
                                           flex: '1 1 calc(50% - 6px)',
                                           minWidth: 0,
@@ -492,6 +495,8 @@ const AppInterface: React.FC<AppViewProps> = ({
                                             viamClient={viamClient}
                                             machineId={machineId}
                                             partId={partId}
+                                            initialNotes={passNotes.get(pass.pass_id) || []}
+                                            onNotesUpdate={onNotesUpdate}
                                           />
                                         </div>
                                       </div>

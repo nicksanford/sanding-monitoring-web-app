@@ -4,6 +4,7 @@ import AppInterface from './AppInterface';
 import Cookies from "js-cookie";
 import { JsonValue } from '@viamrobotics/sdk';
 import { Pass } from './AppInterface';
+import { createNotesManager, PassNote } from './lib/notesManager';
 
 /*
 TODO:
@@ -33,8 +34,8 @@ function App() {
   const [files, setFiles] = useState<VIAM.dataApi.BinaryData[]>([]);
   const [viamClient, setViamClient] = useState<VIAM.ViamClient | null>(null);
   const [robotClient, setRobotClient] = useState<VIAM.RobotClient | null>(null);
-  const [partId, setPartId] = useState<string>(''); // Add partId state
-
+  const [partId, setPartId] = useState<string>('');
+  const [passNotes, setPassNotes] = useState<Map<string, PassNote[]>>(new Map());
   const machineNameMatch = window.location.pathname.match(machineNameRegex);
   const machineName = machineNameMatch ? machineNameMatch[1] : null;
 
@@ -145,9 +146,10 @@ function App() {
       console.log("Tabular Data:", tabularData);
 
       // Set partId in state
+      let extractedPartId = '';
       if (tabularData && tabularData.length > 0) {
-        const extractedPartId = (tabularData[0] as any).part_id;
-        setPartId(extractedPartId || '');
+        extractedPartId = (tabularData[0] as any).part_id || '';
+        setPartId(extractedPartId);
       }
     
       // Process tabular data into pass summaries
@@ -170,6 +172,20 @@ function App() {
       });
 
       setPassSummaries(processedPasses);
+
+      // Fetch all notes for all passes at once
+      if (processedPasses.length > 0 && extractedPartId) {
+        console.log("Fetching notes for all passes...");
+        try {
+          const notesManager = createNotesManager(viamClient, machineId);
+          const passIds = processedPasses.map(pass => pass.pass_id).filter(Boolean);
+          const allNotes = await notesManager.fetchNotesForPasses(passIds);
+          setPassNotes(allNotes);
+          console.log("Fetched notes for", passIds.length, "passes");
+        } catch (error) {
+          console.error("Failed to fetch notes:", error);
+        }
+      }
 
       let allFiles = [];
       let last = undefined;
@@ -215,7 +231,9 @@ function App() {
       robotClient={robotClient}
       fetchVideos={fetchVideos}
       machineId={machineId}
-      partId={partId} // Now using the state variable
+      partId={partId}
+      passNotes={passNotes} // Pass the notes to AppInterface
+      onNotesUpdate={setPassNotes} // Pass update function
     />
   );
 }
