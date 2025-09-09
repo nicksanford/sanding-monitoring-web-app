@@ -4,20 +4,10 @@ import AppInterface from './AppInterface';
 import Cookies from "js-cookie";
 import { JsonValue } from '@viamrobotics/sdk';
 import { Pass } from './AppInterface';
+import { createNotesManager, PassNote } from './lib/notesManager';
 
-/*
-TODO:
-- detect if there is a sanding resource
-    - if so show a button to start sanding
-    - if not, show a warning that there is no sanding resource
-- detect if there is a video-store resource
-    - if so show request a video from the past 1 minute and show the video
-- add pagination
-
-*/
-
-const videoStoreName = "video-store-1";
-const sanderName = "sander-module";
+// const videoStoreName = "video-store-1";
+// const sanderName = "sander-module";
 const sandingSummaryName = "sanding-summary";
 const sandingSummaryComponentType = "rdk:component:sensor";
 const locationIdRegex = /main\.([^.]+)\.viam\.cloud/;
@@ -32,10 +22,9 @@ function App() {
   const [passSummaries, setPassSummaries] = useState<Pass[]>([]);
   const [files, setFiles] = useState<VIAM.dataApi.BinaryData[]>([]);
   const [viamClient, setViamClient] = useState<VIAM.ViamClient | null>(null);
-  // const [sanderClient, setSanderClient] = useState<VIAM.GenericComponentClient | null>(null);
   const [robotClient, setRobotClient] = useState<VIAM.RobotClient | null>(null);
-  const [sanderWarning, setSanderWarning] = useState<string | null>(null); // Warning state
-
+  const [partId, setPartId] = useState<string>('');
+  const [passNotes, setPassNotes] = useState<Map<string, PassNote[]>>(new Map());
   const machineNameMatch = window.location.pathname.match(machineNameRegex);
   const machineName = machineNameMatch ? machineNameMatch[1] : null;
 
@@ -97,33 +86,19 @@ function App() {
         robotId: machineId,
       } as VIAM.dataApi.Filter;
 
-      
-
       const viamClient = await connect(apiKeyId, apiKeySecret);
-
       setViamClient(viamClient);
+      
       try {
         const robotClient = await viamClient.connectToMachine({
           host: hostname, 
           id: machineId,
         });
-        setRobotClient(robotClient); // Store the robot client
+        setRobotClient(robotClient);
       } catch (error) {
         console.error('Failed to create robot client:', error);
         setRobotClient(null);
       }
-
-      // console.log("Resources:", resources);
-
-      // Check for sander module resource
-      // if (resources.find((x) => (x.type == "service" && x.subtype == "generic" && x.name == sanderName))) {
-        // const sanderClient = new VIAM.GenericComponentClient(robotClient, sanderName);
-        // setSanderClient(sanderClient);
-        // TODO: Add visual indication that sander resource is available
-      // } else {
-      //   setSanderWarning("No sanding module found on this robot");
-      //   console.warn("No sander-module resource found");
-      // }
       
       const organizations = await viamClient.appClient.listOrganizations();
       console.log("Organizations:", organizations);
@@ -142,7 +117,7 @@ function App() {
             organization_id: orgID,
             location_id: locationId,
             component_name: sandingSummaryName,
-            robot_id: machineId, // Filter by current robot
+            robot_id: machineId,
             component_type: sandingSummaryComponentType
           },
         },
@@ -152,19 +127,24 @@ function App() {
           },
         },
         {
-          $limit: 100 // Get last 100 passes
+          $limit: 100
         }
       ];
 
       const tabularData = await viamClient.dataClient.tabularDataByMQL(orgID, mqlQuery);
       console.log("Tabular Data:", tabularData);
 
+      // Set partId in state
+      let extractedPartId = '';
+      if (tabularData && tabularData.length > 0) {
+        extractedPartId = (tabularData[0] as any).part_id || '';
+        setPartId(extractedPartId);
+      }
+    
       // Process tabular data into pass summaries
       const processedPasses: Pass[] = tabularData.map((item: any) => {
-        // The actual data is nested in data.readings
         const pass = item.data!.readings!;
         
-
         return {
           start: new Date(pass.start),
           end: new Date(pass.end),
@@ -173,17 +153,28 @@ function App() {
             start: new Date(x.start),
             end: new Date(x.end),
             pass_id: pass.pass_id,
-            // duration_ms: duration(x.start, x.end),
           })): [],
           success: pass.success ?? true,
           pass_id: pass.pass_id,
-          // duration_ms: duration(pass.start, pass.end),
           err_string: pass.err_string  || null
         };
       });
 
-
       setPassSummaries(processedPasses);
+
+      // Fetch all notes for all passes at once
+      if (processedPasses.length > 0 && extractedPartId) {
+        console.log("Fetching notes for all passes...");
+        try {
+          const notesManager = createNotesManager(viamClient, machineId);
+          const passIds = processedPasses.map(pass => pass.pass_id).filter(Boolean);
+          const allNotes = await notesManager.fetchNotesForPasses(passIds);
+          setPassNotes(allNotes);
+          console.log("Fetched notes for", passIds.length, "passes");
+        } catch (error) {
+          console.error("Failed to fetch notes:", error);
+        }
+      }
 
       let allFiles = [];
       let last = undefined;
@@ -222,17 +213,16 @@ function App() {
 
   return (
     <AppInterface 
-
-
       machineName={machineName}
-
       viamClient={viamClient!}
-      passSummaries={passSummaries} // Pass the actual summaries
+      passSummaries={passSummaries}      
       files={files}
       robotClient={robotClient}
-      // sanderClient={null}
-      // sanderWarning={sanderWarning} // Pass the sanding warning
       fetchVideos={fetchVideos}
+      machineId={machineId}
+      partId={partId}
+      passNotes={passNotes}
+      onNotesUpdate={setPassNotes}
     />
   );
 }
