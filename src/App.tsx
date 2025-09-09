@@ -6,17 +6,6 @@ import { JsonValue } from '@viamrobotics/sdk';
 import { Pass } from './AppInterface';
 import { createNotesManager, PassNote } from './lib/notesManager';
 
-/*
-TODO:
-- detect if there is a sanding resource
-    - if so show a button to start sanding
-    - if not, show a warning that there is no sanding resource
-- detect if there is a video-store resource
-    - if so show request a video from the past 1 minute and show the video
-- add pagination
-
-*/
-
 // const videoStoreName = "video-store-1";
 // const sanderName = "sander-module";
 const sandingSummaryName = "sanding-summary";
@@ -232,8 +221,8 @@ function App() {
       fetchVideos={fetchVideos}
       machineId={machineId}
       partId={partId}
-      passNotes={passNotes} // Pass the notes to AppInterface
-      onNotesUpdate={setPassNotes} // Pass update function
+      passNotes={passNotes}
+      onNotesUpdate={setPassNotes}
     />
   );
 }

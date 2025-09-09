@@ -74,7 +74,7 @@ const AppInterface: React.FC<AppViewProps> = ({
   //   "Executing"
   // ];
 
-  const activeTabStyle = "bg-blue-600 text-white";
+  const activeTabStyle = "bg-black-900 text-white";
   const inactiveTabStyle = "bg-gray-200 text-gray-700 hover:bg-gray-300";
 
   const toggleRowExpansion = (index: number) => {
@@ -333,7 +333,6 @@ const AppInterface: React.FC<AppViewProps> = ({
                                       return timeA - timeB;
                                     })
 
-                                    // Files section (existing code)
                                     const filesSection = passFiles.length === 0 ? (
                                       <div className="pass-files-section">
                                         <h4>Files captured during this pass</h4>

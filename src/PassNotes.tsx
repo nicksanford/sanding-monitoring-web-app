@@ -8,7 +8,7 @@ interface PassNotesProps {
   machineId: string;
   partId: string;
   initialNotes: PassNote[]; // Add pre-fetched notes
-  onNotesUpdate: React.Dispatch<React.SetStateAction<Map<string, PassNote[]>>>; // Accept state setter style
+  onNotesUpdate: React.Dispatch<React.SetStateAction<Map<string, PassNote[]>>>;
 }
 
 const PassNotes: React.FC<PassNotesProps> = ({ 
@@ -61,10 +61,21 @@ const PassNotes: React.FC<PassNotesProps> = ({
       // Update original text to current text
       setOriginalNoteText(noteToSave);
       
-      // Update the global notes state by fetching fresh notes for this pass
-      const updatedNotes = await notesManager.fetchPassNotes(passId);
+      // Instead of refetching, create the new note object locally
+      const newNote: PassNote = {
+        pass_id: passId,
+        note_text: noteToSave,
+        created_at: new Date().toISOString(),
+        created_by: "web-app"
+      };
+      
+      // Update the global notes state with the new note (no network call)
       onNotesUpdate((prevNotes: Map<string, PassNote[]>) => {
         const newNotesMap = new Map(prevNotes);
+        const existingNotes = newNotesMap.get(passId) || [];
+        
+        // Add the new note to the beginning (most recent first)
+        const updatedNotes = [newNote, ...existingNotes];
         newNotesMap.set(passId, updatedNotes);
         return newNotesMap;
       });
@@ -87,7 +98,7 @@ const PassNotes: React.FC<PassNotesProps> = ({
 
   // Check if there are changes - now allows empty notes
   const hasChanges = noteText.trim() !== originalNoteText.trim();
-  const canSave = hasChanges; // Remove the requirement for non-empty text
+  const canSave = hasChanges;
 
   // Button styling based on state
   const getButtonStyle = () => {
@@ -96,19 +107,14 @@ const PassNotes: React.FC<PassNotesProps> = ({
         backgroundColor: '#10b981', // Green for success
         cursor: 'default'
       };
-    } else if (saving) {
-      return {
-        backgroundColor: '#9ca3af', // Gray for saving
-        cursor: 'not-allowed'
-      };
     } else if (canSave) {
       return {
-        backgroundColor: '#3b82f6', // Blue for save (always)
+        backgroundColor: '#3b82f6', // Blue for save
         cursor: 'pointer'
       };
     } else {
       return {
-        backgroundColor: '#9ca3af', // Gray for disabled
+        backgroundColor: '#9ca3af', // Gray for saving and disabled
         cursor: 'not-allowed'
       };
     }
