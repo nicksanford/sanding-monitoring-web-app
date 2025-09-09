@@ -349,7 +349,7 @@ const AppInterface: React.FC<AppViewProps> = ({
                                         
                                         <div style={{ 
                                           display: 'flex',
-                                          flexWrap: 'wrap',
+                                          flexDirection: 'column',
                                           gap: '8px',
                                           overflowY: 'auto',
                                           padding: '4px'
@@ -371,9 +371,7 @@ const AppInterface: React.FC<AppViewProps> = ({
                                                   fontSize: '13px',
                                                   cursor: 'pointer',
                                                   transition: 'all 0.2s ease',
-                                                  flex: '1 0 calc(50% - 8px)',
-                                                  minWidth: '280px',
-                                                  maxWidth: 'calc(50% - 10px)',
+                                                  width: '100%',
                                                   boxSizing: 'border-box'
                                                 }}
                                                 onMouseEnter={(e) => {
@@ -385,7 +383,6 @@ const AppInterface: React.FC<AppViewProps> = ({
                                                   e.currentTarget.style.transform = 'translateY(0)';
                                                 }}
                                               >
-                                                {/* ...existing file display logic... */}
                                                 <div style={{ 
                                                   display: 'flex', 
                                                   alignItems: 'center', 
@@ -418,6 +415,7 @@ const AppInterface: React.FC<AppViewProps> = ({
                                                     padding: '4px 12px',
                                                     backgroundColor: downloadingFiles.has(file.metadata?.binaryDataId || '') ? '#9ca3af' : '#3b82f6',
                                                     color: 'white',
+                                                    border: 'none',
                                                     borderRadius: '4px',
                                                     textDecoration: 'none',
                                                     fontSize: '12px',
@@ -467,17 +465,36 @@ const AppInterface: React.FC<AppViewProps> = ({
                                     );
 
                                     return (
-                                      <>
-                                        {filesSection}
+                                      <div style={{
+                                        display: 'flex',
+                                        gap: '12px',
+                                        width: '100%',
+                                        maxWidth: '100%',
+                                        overflow: 'hidden'
+                                      }}>
+                                        {/* Files section - Left column - 50% width */}
+                                        <div style={{ 
+                                          flex: '1 1 calc(50% - 6px)',
+                                          minWidth: 0,
+                                          boxSizing: 'border-box'
+                                        }}>
+                                          {filesSection}
+                                        </div>
                                         
-                                        {/* New Notes section */}
-                                        <PassNotes
-                                          passId={pass.pass_id}
-                                          viamClient={viamClient}
-                                          machineId={machineId}
-                                          partId={partId}
-                                        />
-                                      </>
+                                        {/* Notes section - Right column - 50% width */}
+                                        <div style={{ 
+                                          flex: '1 1 calc(50% - 6px)',
+                                          minWidth: 0,
+                                          boxSizing: 'border-box'
+                                        }}>
+                                          <PassNotes
+                                            passId={pass.pass_id}
+                                            viamClient={viamClient}
+                                            machineId={machineId}
+                                            partId={partId}
+                                          />
+                                        </div>
+                                      </div>
                                     );
                                   })()}
                                 </div>

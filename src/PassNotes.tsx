@@ -136,12 +136,12 @@ const PassNotes: React.FC<PassNotesProps> = ({ passId, viamClient, machineId, pa
 
   return (
     <div className="pass-notes-section" style={{
-      marginTop: '16px',
-      padding: '0 4px',
-      borderTop: '1px solid #e2e8f0',
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column'
     }}>
       <h4 style={{
-        margin: '12px 0 12px 0',
+        margin: '0 0 12px 0',
         fontSize: '14px',
         fontWeight: '600',
         color: '#1f2937'
@@ -154,77 +154,79 @@ const PassNotes: React.FC<PassNotesProps> = ({ passId, viamClient, machineId, pa
           Loading notes...
         </div>
       ) : (
-        <div style={{ marginBottom: '16px' }}>
-          <div style={{
-            display: 'flex',
-            gap: '12px',
-            alignItems: 'flex-start'
-          }}>
-            <textarea
-              value={noteText}
-              onChange={(e) => setNoteText(e.target.value)}
-              placeholder="Add notes about this sanding pass..."
-              rows={4}
-              style={{
-                flex: 1,
-                padding: '12px',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                fontSize: '14px',
-                fontFamily: 'inherit',
-                resize: 'vertical',
-                outline: 'none',
-                boxSizing: 'border-box'
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = '#3b82f6';
-                e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = '#d1d5db';
-                e.target.style.boxShadow = 'none';
-              }}
-            />
-            
-            <button
-              onClick={saveNote}
-              disabled={saving || !canSave || showSuccess}
-              style={{
-                padding: '8px 16px',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                fontSize: '12px',
-                transition: 'background-color 0.2s',
-                height: 'fit-content',
-                whiteSpace: 'nowrap',
-                alignSelf: 'flex-end',
-                ...getButtonStyle()
-              }}
-              onMouseEnter={(e) => {
-                if (canSave && !saving && !showSuccess) {
-                  e.currentTarget.style.backgroundColor = '#2563eb';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (canSave && !saving && !showSuccess) {
-                  e.currentTarget.style.backgroundColor = '#3b82f6';
-                }
-              }}
-            >
-              {getButtonText()}
-            </button>
-          </div>
+        <div style={{ 
+          display: 'flex',
+          flexDirection: 'column',
+          flex: 1,
+          minHeight: '120px'
+        }}>
+          <textarea
+            id={`pass-notes-${passId}`}
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+            placeholder="Add notes about this sanding pass..."
+            rows={4}
+            style={{
+              flexGrow: 1,
+              width: '100%',
+              padding: '12px',
+              border: '1px solid #d1d5db',
+              fontSize: '14px',
+              fontFamily: 'inherit',
+              resize: 'vertical',
+              outline: 'none',
+              boxSizing: 'border-box',
+              marginBottom: '8px'
+            }}
+            onFocus={(e) => {
+              e.target.style.borderColor = '#3b82f6';
+              e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
+            }}
+            onBlur={(e) => {
+              e.target.style.borderColor = '#d1d5db';
+              e.target.style.boxShadow = 'none';
+            }}
+          />
           
-          {error && (
-            <div style={{ 
-              marginTop: '8px'
-            }}>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center'
+          }}>
+            {error && (
               <span style={{ color: '#dc2626', fontSize: '13px' }}>
                 {error}
               </span>
+            )}
+            <div style={{ marginLeft: 'auto' }}>
+              <button
+                onClick={saveNote}
+                disabled={saving || !canSave || showSuccess}
+                style={{
+                  padding: '8px 16px',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  transition: 'background-color 0.2s',
+                  whiteSpace: 'nowrap',
+                  ...getButtonStyle()
+                }}
+                onMouseEnter={(e) => {
+                  if (canSave && !saving && !showSuccess) {
+                    e.currentTarget.style.backgroundColor = '#2563eb';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (canSave && !saving && !showSuccess) {
+                    e.currentTarget.style.backgroundColor = '#3b82f6';
+                  }
+                }}
+              >
+                {getButtonText()}
+              </button>
             </div>
-          )}
+          </div>
         </div>
       )}
     </div>
