@@ -7,8 +7,8 @@ interface PassNotesProps {
   viamClient: VIAM.ViamClient;
   machineId: string;
   partId: string;
-  initialNotes: PassNote[]; // Add pre-fetched notes
-  onNotesUpdate: React.Dispatch<React.SetStateAction<Map<string, PassNote[]>>>;
+  initialNotes: PassNote[];
+  onNotesUpdate: (updater: (prevNotes: Map<string, PassNote[]>) => Map<string, PassNote[]>) => void;
 }
 
 const PassNotes: React.FC<PassNotesProps> = ({ 
@@ -27,7 +27,6 @@ const PassNotes: React.FC<PassNotesProps> = ({
 
   const notesManager = createNotesManager(viamClient, machineId);
 
-  // Initialize with pre-fetched notes
   useEffect(() => {
     if (initialNotes.length > 0) {
       const sortedNotes = [...initialNotes].sort((a, b) => 
@@ -48,20 +47,11 @@ const PassNotes: React.FC<PassNotesProps> = ({
     setShowSuccess(false);
     
     try {
-      // Allow empty notes - this acts as a "delete"
       const noteToSave = noteText.trim();
       await notesManager.savePassNote(passId, noteToSave, partId);
       
-      if (noteToSave === '') {
-        console.log("Empty note saved - effectively deleting note for pass:", passId);
-      } else {
-        console.log("Note saved successfully!");
-      }
-      
-      // Update original text to current text
       setOriginalNoteText(noteToSave);
       
-      // Instead of refetching, create the new note object locally
       const newNote: PassNote = {
         pass_id: passId,
         note_text: noteToSave,
@@ -69,24 +59,16 @@ const PassNotes: React.FC<PassNotesProps> = ({
         created_by: "web-app"
       };
       
-      // Update the global notes state with the new note (no network call)
       onNotesUpdate((prevNotes: Map<string, PassNote[]>) => {
         const newNotesMap = new Map(prevNotes);
         const existingNotes = newNotesMap.get(passId) || [];
-        
-        // Add the new note to the beginning (most recent first)
         const updatedNotes = [newNote, ...existingNotes];
         newNotesMap.set(passId, updatedNotes);
         return newNotesMap;
       });
       
-      // Show success state
       setShowSuccess(true);
-      
-      // Reset success state after 2 seconds
-      setTimeout(() => {
-        setShowSuccess(false);
-      }, 2000);
+      setTimeout(() => setShowSuccess(false), 2000);
       
     } catch (err) {
       console.error("Error saving note:", err);
@@ -96,35 +78,12 @@ const PassNotes: React.FC<PassNotesProps> = ({
     }
   };
 
-  // Check if there are changes - now allows empty notes
   const hasChanges = noteText.trim() !== originalNoteText.trim();
   const canSave = hasChanges;
 
-  // Button styling based on state
-  const getButtonStyle = () => {
-    if (showSuccess) {
-      return {
-        backgroundColor: '#10b981', // Green for success
-        cursor: 'default'
-      };
-    } else if (canSave) {
-      return {
-        backgroundColor: '#3b82f6', // Blue for save
-        cursor: 'pointer'
-      };
-    } else {
-      return {
-        backgroundColor: '#9ca3af', // Gray for saving and disabled
-        cursor: 'not-allowed'
-      };
-    }
-  };
-
-  // Update button text to always show "Save note"
   const getButtonText = () => {
-    if (showSuccess) {
-      return 'Success';
-    } else if (saving) {
+    if (showSuccess) return 'Success';
+    if (saving) {
       return (
         <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span style={{ 
@@ -135,13 +94,18 @@ const PassNotes: React.FC<PassNotesProps> = ({
             borderTop: '2px solid white',
             borderRadius: '50%',
             animation: 'spin 1s linear infinite'
-          }}></span>
+          }} />
           Saving...
         </span>
       );
-    } else {
-      return 'Save note';
     }
+    return 'Save note';
+  };
+
+  const getButtonColor = () => {
+    if (showSuccess) return '#10b981';
+    if (saving || !canSave) return '#9ca3af';
+    return '#3b82f6';
   };
 
   return (
@@ -170,12 +134,12 @@ const PassNotes: React.FC<PassNotesProps> = ({
           value={noteText}
           onChange={(e) => setNoteText(e.target.value)}
           placeholder="Add notes about this sanding pass..."
-          rows={4}
           style={{
             flexGrow: 1,
             width: '100%',
             padding: '12px',
             border: '1px solid #d1d5db',
+            borderRadius: '6px',
             fontSize: '14px',
             fontFamily: 'inherit',
             resize: 'vertical',
@@ -208,23 +172,28 @@ const PassNotes: React.FC<PassNotesProps> = ({
               onClick={saveNote}
               disabled={saving || !canSave || showSuccess}
               style={{
-                padding: '8px 16px',
+                padding: '6px 12px',
+                backgroundColor: getButtonColor(),
                 color: 'white',
                 border: 'none',
-                borderRadius: '6px',
+                borderRadius: '4px',
                 fontSize: '12px',
-                transition: 'background-color 0.2s',
+                fontWeight: '500',
+                cursor: saving || !canSave || showSuccess ? 'not-allowed' : 'pointer',
+                transition: 'all 0.2s ease',
                 whiteSpace: 'nowrap',
-                ...getButtonStyle()
+                lineHeight: '1.4'
               }}
               onMouseEnter={(e) => {
                 if (canSave && !saving && !showSuccess) {
                   e.currentTarget.style.backgroundColor = '#2563eb';
+                  e.currentTarget.style.transform = 'translateY(-1px)';
                 }
               }}
               onMouseLeave={(e) => {
                 if (canSave && !saving && !showSuccess) {
                   e.currentTarget.style.backgroundColor = '#3b82f6';
+                  e.currentTarget.style.transform = 'translateY(0)';
                 }
               }}
             >
