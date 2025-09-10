@@ -362,6 +362,7 @@ const AppInterface: React.FC<AppViewProps> = ({
                                                 </div>
                                                 <a 
                                                   href={file.metadata?.uri}
+                                                  download={file.metadata?.fileName?.split('/').pop() || 'download'}
                                                   style={{
                                                     marginLeft: '12px',
                                                     padding: '4px 12px',
