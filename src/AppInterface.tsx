@@ -7,7 +7,7 @@ import PassNotes from './PassNotes';
 import { 
   formatDurationToMinutesSeconds,
 } from './lib/videoUtils';
-import { PassNote } from './lib/notesManager';
+import { PassNote, createNotesManager } from './lib/notesManager';
 
 interface AppViewProps {
   passSummaries?: any[];
@@ -56,6 +56,7 @@ const AppInterface: React.FC<AppViewProps> = ({
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [downloadingFiles, setDownloadingFiles] = useState<Set<string>>(new Set());
   const [videoStoreClient, setVideoStoreClient] = useState<VIAM.GenericComponentClient | null>(null);
+  const [loadingNotes, setLoadingNotes] = useState<Set<string>>(new Set());
 
   // Filter files to only include video files (.mp4)
   const videoFiles = files.filter((file: VIAM.dataApi.BinaryData) => 
@@ -83,8 +84,43 @@ const AppInterface: React.FC<AppViewProps> = ({
       newExpandedRows.delete(index);
     } else {
       newExpandedRows.add(index);
+      
+      // Load notes for this pass when expanding
+      const pass = passSummaries[index];
+      if (pass && pass.pass_id) {
+        loadNotesForPass(pass.pass_id);
+      }
     }
     setExpandedRows(newExpandedRows);
+  };
+
+  const loadNotesForPass = async (passId: string) => {
+    // Don't load if already loading or already have notes
+    if (loadingNotes.has(passId) || passNotes.has(passId)) {
+      return;
+    }
+    
+    setLoadingNotes(prev => new Set(prev).add(passId));
+    
+    try {
+      const notesManager = createNotesManager(viamClient, machineId);
+      const notes = await notesManager.fetchPassNotes(passId);
+      
+      // Update only the notes for this specific pass
+      onNotesUpdate((prevNotes) => {
+        const newNotes = new Map(prevNotes);
+        newNotes.set(passId, notes);
+        return newNotes;
+      });
+    } catch (error) {
+      console.error(`Failed to load notes for pass ${passId}:`, error);
+    } finally {
+      setLoadingNotes(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(passId);
+        return newSet;
+      });
+    }
   };
 
   const getStepVideos = (step: Step) => {
@@ -495,6 +531,7 @@ const AppInterface: React.FC<AppViewProps> = ({
                                             machineId={machineId}
                                             partId={partId}
                                             initialNotes={passNotes.get(pass.pass_id) || []}
+                                            isLoading={loadingNotes.has(pass.pass_id)}
                                             onNotesUpdate={onNotesUpdate}
                                           />
                                         </div>

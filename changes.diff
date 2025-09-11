@@ -1,0 +1,658 @@
+diff --git a/src/App.tsx b/src/App.tsx
+index 30a3154..2c9d8b1 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -4,7 +4,7 @@ import AppInterface from './AppInterface';
+ import Cookies from "js-cookie";
+ import { JsonValue } from '@viamrobotics/sdk';
+ import { Pass } from './AppInterface';
+-import { createNotesManager, PassNote } from './lib/notesManager';
++import { PassNote } from './lib/notesManager';
+ 
+ // const videoStoreName = "video-store-1";
+ // const sanderName = "sander-module";
+@@ -162,20 +162,6 @@ function App() {
+ 
+       setPassSummaries(processedPasses);
+ 
+-      // Fetch all notes for all passes at once
+-      if (processedPasses.length > 0 && extractedPartId) {
+-        console.log("Fetching notes for all passes...");
+-        try {
+-          const notesManager = createNotesManager(viamClient, machineId);
+-          const passIds = processedPasses.map(pass => pass.pass_id).filter(Boolean);
+-          const allNotes = await notesManager.fetchNotesForPasses(passIds);
+-          setPassNotes(allNotes);
+-          console.log("Fetched notes for", passIds.length, "passes");
+-        } catch (error) {
+-          console.error("Failed to fetch notes:", error);
+-        }
+-      }
+-
+       let allFiles = [];
+       let last = undefined;
+       const earliestPassTime = new Date(Math.min(...processedPasses.map(p => p.start.getTime())));
+diff --git a/src/AppInterface.tsx b/src/AppInterface.tsx
+index 5ef6c34..24e3c47 100644
+--- a/src/AppInterface.tsx
++++ b/src/AppInterface.tsx
+@@ -7,7 +7,7 @@ import PassNotes from './PassNotes';
+ import { 
+   formatDurationToMinutesSeconds,
+ } from './lib/videoUtils';
+-import { PassNote } from './lib/notesManager';
++import { PassNote, createNotesManager } from './lib/notesManager';
+ 
+ interface AppViewProps {
+   passSummaries?: any[];
+@@ -56,6 +56,7 @@ const AppInterface: React.FC<AppViewProps> = ({
+   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+   const [downloadingFiles, setDownloadingFiles] = useState<Set<string>>(new Set());
+   const [videoStoreClient, setVideoStoreClient] = useState<VIAM.GenericComponentClient | null>(null);
++  const [loadingNotes, setLoadingNotes] = useState<Set<string>>(new Set());
+ 
+   // Filter files to only include video files (.mp4)
+   const videoFiles = files.filter((file: VIAM.dataApi.BinaryData) => 
+@@ -83,10 +84,45 @@ const AppInterface: React.FC<AppViewProps> = ({
+       newExpandedRows.delete(index);
+     } else {
+       newExpandedRows.add(index);
++      
++      // Load notes for this pass when expanding
++      const pass = passSummaries[index];
++      if (pass && pass.pass_id) {
++        loadNotesForPass(pass.pass_id);
++      }
+     }
+     setExpandedRows(newExpandedRows);
+   };
+ 
++  const loadNotesForPass = async (passId: string) => {
++    // Don't load if already loading or already have notes
++    if (loadingNotes.has(passId) || passNotes.has(passId)) {
++      return;
++    }
++    
++    setLoadingNotes(prev => new Set(prev).add(passId));
++    
++    try {
++      const notesManager = createNotesManager(viamClient, machineId);
++      const notes = await notesManager.fetchPassNotes(passId);
++      
++      // Update only the notes for this specific pass
++      onNotesUpdate((prevNotes) => {
++        const newNotes = new Map(prevNotes);
++        newNotes.set(passId, notes);
++        return newNotes;
++      });
++    } catch (error) {
++      console.error(`Failed to load notes for pass ${passId}:`, error);
++    } finally {
++      setLoadingNotes(prev => {
++        const newSet = new Set(prev);
++        newSet.delete(passId);
++        return newSet;
++      });
++    }
++  };
++
+   const getStepVideos = (step: Step) => {
+     if (!videoFiles) return [];
+ 
+@@ -495,6 +531,7 @@ const AppInterface: React.FC<AppViewProps> = ({
+                                             machineId={machineId}
+                                             partId={partId}
+                                             initialNotes={passNotes.get(pass.pass_id) || []}
++                                            isLoading={loadingNotes.has(pass.pass_id)}
+                                             onNotesUpdate={onNotesUpdate}
+                                           />
+                                         </div>
+diff --git a/src/PassNotes.tsx b/src/PassNotes.tsx
+index d0c33db..ab16a69 100644
+--- a/src/PassNotes.tsx
++++ b/src/PassNotes.tsx
+@@ -2,22 +2,24 @@ import React, { useState, useEffect } from 'react';
+ import * as VIAM from "@viamrobotics/sdk";
+ import { createNotesManager, PassNote } from './lib/notesManager';
+ 
+-interface PassNotesProps {
++export interface PassNotesProps {
+   passId: string;
+   viamClient: VIAM.ViamClient;
+   machineId: string;
+   partId: string;
+   initialNotes: PassNote[];
+-  onNotesUpdate: (updater: (prevNotes: Map<string, PassNote[]>) => Map<string, PassNote[]>) => void;
++  isLoading: boolean;
++  onNotesUpdate: React.Dispatch<React.SetStateAction<Map<string, PassNote[]>>>;
+ }
+ 
+-const PassNotes: React.FC<PassNotesProps> = ({ 
+-  passId, 
+-  viamClient, 
+-  machineId, 
+-  partId, 
++const PassNotes: React.FC<PassNotesProps> = ({
++  passId,
++  viamClient,
++  machineId,
++  partId,
+   initialNotes,
+-  onNotesUpdate 
++  isLoading,
++  onNotesUpdate,
+ }) => {
+   const [noteText, setNoteText] = useState<string>('');
+   const [originalNoteText, setOriginalNoteText] = useState<string>('');
+@@ -28,6 +30,7 @@ const PassNotes: React.FC<PassNotesProps> = ({
+   const notesManager = createNotesManager(viamClient, machineId);
+ 
+   useEffect(() => {
++    // If we have initial notes, use them
+     if (initialNotes.length > 0) {
+       const sortedNotes = [...initialNotes].sort((a, b) => 
+         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+@@ -36,37 +39,38 @@ const PassNotes: React.FC<PassNotesProps> = ({
+       setNoteText(latestNoteText);
+       setOriginalNoteText(latestNoteText);
+     } else {
++      // Don't fetch here - let AppInterface handle it
+       setNoteText('');
+       setOriginalNoteText('');
+     }
+-  }, [initialNotes]);
++  }, [passId, initialNotes]); // Add initialNotes to dependencies
+ 
+   const saveNote = async () => {
++    if (saving) return; // Prevent double-clicks
++    
+     setSaving(true);
+     setError(null);
+-    setShowSuccess(false);
++    setShowSuccess(false); // Reset success state
+     
+     try {
+       const noteToSave = noteText.trim();
+-      await notesManager.savePassNote(passId, noteToSave, partId);
+       
+-      setOriginalNoteText(noteToSave);
++      // Get the created note directly from the savePassNote function
++      const newNote = await notesManager.savePassNote(passId, noteToSave, partId);
++      console.log("UI received saved note confirmation"); // Add this for debugging
+       
+-      const newNote: PassNote = {
+-        pass_id: passId,
+-        note_text: noteToSave,
+-        created_at: new Date().toISOString(),
+-        created_by: "web-app"
+-      };
++      // Update UI state with the returned note object
++      setOriginalNoteText(noteToSave);
+       
+-      onNotesUpdate((prevNotes: Map<string, PassNote[]>) => {
+-        const newNotesMap = new Map(prevNotes);
+-        const existingNotes = newNotesMap.get(passId) || [];
+-        const updatedNotes = [newNote, ...existingNotes];
+-        newNotesMap.set(passId, updatedNotes);
+-        return newNotesMap;
++      // Update the notes collection with the new note
++      onNotesUpdate((prevNotes) => {
++        const newMap = new Map(prevNotes);
++        const currentNotes = newMap.get(passId) || [];
++        newMap.set(passId, [newNote, ...currentNotes]);
++        return newMap;
+       });
+       
++      // Show success state
+       setShowSuccess(true);
+       setTimeout(() => setShowSuccess(false), 2000);
+       
+@@ -74,6 +78,7 @@ const PassNotes: React.FC<PassNotesProps> = ({
+       console.error("Error saving note:", err);
+       setError("Failed to save note");
+     } finally {
++      // Ensure this runs even if there's an error
+       setSaving(false);
+     }
+   };
+@@ -87,7 +92,7 @@ const PassNotes: React.FC<PassNotesProps> = ({
+       return (
+         <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+           <span style={{ 
+-            display: 'inline-block',
++            display: 'block',
+             width: '12px',
+             height: '12px',
+             border: '2px solid transparent',
+@@ -109,99 +114,99 @@ const PassNotes: React.FC<PassNotesProps> = ({
+   };
+ 
+   return (
+-    <div className="pass-notes-section" style={{
+-      height: '100%',
+-      display: 'flex',
+-      flexDirection: 'column'
+-    }}>
++    <div className="pass-notes-container">
+       <h4 style={{
+-        margin: '0 0 12px 0',
+-        fontSize: '14px',
+-        fontWeight: '600',
+-        color: '#1f2937'
++        position: 'sticky',
++        top: 0,
++        backgroundColor: '#fafafa',
++        zIndex: 1,
++        margin: 0,
++        padding: '0 0 8px 4px',
+       }}>
+         Notes for this pass
+       </h4>
+-
+-      <div style={{ 
+-        display: 'flex',
+-        flexDirection: 'column',
+-        flex: 1,
+-        minHeight: '120px'
+-      }}>
+-        <textarea
+-          id={`pass-notes-${passId}`}
+-          value={noteText}
+-          onChange={(e) => setNoteText(e.target.value)}
+-          placeholder="Add notes about this sanding pass..."
+-          style={{
+-            flexGrow: 1,
+-            width: '100%',
+-            padding: '12px',
+-            border: '1px solid #d1d5db',
+-            borderRadius: '6px',
+-            fontSize: '14px',
+-            fontFamily: 'inherit',
+-            resize: 'vertical',
+-            outline: 'none',
+-            boxSizing: 'border-box',
+-            marginBottom: '8px'
+-          }}
+-          onFocus={(e) => {
+-            e.target.style.borderColor = '#3b82f6';
+-            e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
+-          }}
+-          onBlur={(e) => {
+-            e.target.style.borderColor = '#d1d5db';
+-            e.target.style.boxShadow = 'none';
+-          }}
+-        />
+-        
+-        <div style={{ 
+-          display: 'flex', 
+-          justifyContent: 'space-between', 
+-          alignItems: 'center'
+-        }}>
++      {isLoading && (
++        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
++          <div style={{ 
++            display: 'inline-block',
++            width: '24px',
++            height: '24px',
++            border: '3px solid rgba(0,0,0,0.1)',
++            borderTop: '3px solid #3b82f6',
++            borderRadius: '50%',
++            animation: 'spin 1s linear infinite'
++          }}></div>
++          <span style={{ marginLeft: '10px', color: '#6b7280' }}>Loading notes...</span>
++        </div>
++      )}
++      {!isLoading && (
++        <>
++          <textarea
++            value={noteText}
++            onChange={(e) => setNoteText(e.target.value)}
++            placeholder="Add notes about this pass..."
++            style={{
++              width: '100%',
++              height: '100px',
++              padding: '10px',
++              border: '1px solid #d1d5db',
++              borderRadius: '6px',
++              fontSize: '14px',
++              fontFamily: 'inherit',
++              resize: 'none',
++              outline: 'none',
++              transition: 'border-color 0.2s',
++            }}
++            onFocus={(e) => {
++              e.target.style.borderColor = '#3b82f6';
++            }}
++            onBlur={(e) => {
++              e.target.style.borderColor = '#d1d5db';
++            }}
++            disabled={saving}
++          />
++          
++          {/* Error message */}
+           {error && (
+-            <span style={{ color: '#dc2626', fontSize: '13px' }}>
++            <div style={{
++              marginTop: '8px',
++              padding: '8px 12px',
++              backgroundColor: '#fee2e2',
++              color: '#991b1b',
++              borderRadius: '4px',
++              fontSize: '13px'
++            }}>
+               {error}
+-            </span>
++            </div>
+           )}
+-          <div style={{ marginLeft: 'auto' }}>
+-            <button
+-              onClick={saveNote}
+-              disabled={saving || !canSave || showSuccess}
+-              style={{
+-                padding: '6px 12px',
+-                backgroundColor: getButtonColor(),
+-                color: 'white',
+-                border: 'none',
+-                borderRadius: '4px',
+-                fontSize: '12px',
+-                fontWeight: '500',
+-                cursor: saving || !canSave || showSuccess ? 'not-allowed' : 'pointer',
+-                transition: 'all 0.2s ease',
+-                whiteSpace: 'nowrap',
+-                lineHeight: '1.4'
+-              }}
+-              onMouseEnter={(e) => {
+-                if (canSave && !saving && !showSuccess) {
+-                  e.currentTarget.style.backgroundColor = '#2563eb';
+-                  e.currentTarget.style.transform = 'translateY(-1px)';
+-                }
+-              }}
+-              onMouseLeave={(e) => {
+-                if (canSave && !saving && !showSuccess) {
+-                  e.currentTarget.style.backgroundColor = '#3b82f6';
+-                  e.currentTarget.style.transform = 'translateY(0)';
+-                }
+-              }}
+-            >
+-              {getButtonText()}
+-            </button>
+-          </div>
+-        </div>
+-      </div>
++          
++          {/* Save button */}
++          <button
++            onClick={saveNote}
++            disabled={!canSave || saving}
++            style={{
++              marginTop: '12px',
++              padding: '10px 16px',
++              backgroundColor: getButtonColor(),
++              color: 'white',
++              border: 'none',
++              borderRadius: '6px',
++              fontSize: '14px',
++              fontWeight: '500',
++              cursor: canSave && !saving ? 'pointer' : 'not-allowed',
++              opacity: canSave && !saving ? 1 : 0.5,
++              transition: 'all 0.2s',
++              display: 'flex',
++              alignItems: 'center',
++              justifyContent: 'center',
++              gap: '6px',
++              width: '100px'
++            }}
++          >
++            {getButtonText()}
++          </button>
++        </>
++      )}
+     </div>
+   );
+ };
+diff --git a/src/lib/notesManager.ts b/src/lib/notesManager.ts
+index 53c5ab9..59c4e43 100644
+--- a/src/lib/notesManager.ts
++++ b/src/lib/notesManager.ts
+@@ -19,7 +19,7 @@ export class NotesManager {
+   /**
+    * Save a note for a specific pass
+    */
+-  async savePassNote(passId: string, noteText: string, partId: string): Promise<void> {
++  async savePassNote(passId: string, noteText: string, partId: string): Promise<PassNote> {
+     if (!this.viamClient) {
+       throw new Error("Viam client not initialized");
+     }
+@@ -43,138 +43,134 @@ export class NotesManager {
+     const noteJson = JSON.stringify(noteData);
+     const binaryData = new TextEncoder().encode(noteJson);
+ 
+-    // Upload the note as binary data
+-    await this.viamClient.dataClient.binaryDataCaptureUpload(
+-      binaryData,                     // binary data
+-      partId,                         // partId
+-      "rdk:component:generic",        // componentType
+-      "sanding-notes",                // componentName
+-      "SaveNote",                     // methodName
+-      ".json",                        // fileExtension
+-      [now, now],                     // methodParameters (start and end time)
+-      ["sanding-notes"]               // tags
+-    );
+-
+-    console.log("Note saved successfully!");
++    try {
++      // Upload the new note with pass_id in tags for easier filtering
++      await this.viamClient.dataClient.binaryDataCaptureUpload(
++        binaryData,
++        partId,
++        "rdk:component:generic",
++        "sanding-notes",
++        "SaveNote",
++        ".json",
++        [now, now],
++        ["sanding-notes", `pass:${passId}`] // Add pass ID as a tag
++      );
++
++      console.log("Note saved successfully!");
++
++      // Run cleanup asynchronously - don't wait for it
++      this.deleteOldNotes(passId)
++        .then(() => console.log("Background cleanup completed"))
++        .catch(error => console.warn("Background cleanup failed:", error));
++
++      // Return immediately so UI can update
++      return noteData;
++    } catch (error) {
++      console.error("Failed to save note:", error);
++      throw error;
++    }
+   }
+ 
+   /**
+-   * Fetch all notes for a specific pass
++   * Delete old notes for a pass, keeping only the most recent one
+    */
+-  async fetchPassNotes(passId: string): Promise<PassNote[]> {
+-    if (!this.viamClient) {
+-      throw new Error("Viam client not initialized");
+-    }
+-
+-    // Use correct filter properties and cast to unknown first
+-    const filter = {
+-      robotId: this.machineId,
+-      componentName: "sanding-notes",
+-      componentType: "rdk:component:generic",
+-      tags: ["sanding-notes"]
+-    } as unknown as VIAM.dataApi.Filter;
+-
+-    const binaryData = await this.viamClient.dataClient.binaryDataByFilter(
+-      filter,
+-      100, // limit
+-      VIAM.dataApi.Order.DESCENDING,
+-      undefined, // no pagination token
+-      false,
+-      false,
+-      false
+-    );
+-
+-    // Filter and parse notes for this specific pass
+-    const passNotes: PassNote[] = [];
+-    for (const item of binaryData.data) {
+-      try {
+-        // Use binaryDataByIds to get the actual binary data
+-        const noteDataArray = await this.viamClient.dataClient.binaryDataByIds([item.metadata!.binaryDataId!]);
+-        if (noteDataArray.length > 0) {
+-          // Properly access binary data from the response
+-          const binaryDataItem = noteDataArray[0];
+-          let noteBytes: Uint8Array;
+-
+-          if (binaryDataItem.binary) {
+-            noteBytes = binaryDataItem.binary;
+-          } else {
+-            console.warn("No binary data found in response");
+-            continue;
+-          }
+-
+-          const noteJson = new TextDecoder().decode(noteBytes);
++  async deleteOldNotes(passId: string): Promise<void> {
++    try {
++      const filter = {
++        robotId: this.machineId,
++        componentName: "sanding-notes",
++        componentType: "rdk:component:generic",
++        tags: ["sanding-notes"]
++      } as unknown as VIAM.dataApi.Filter;
++
++      const binaryData = await this.viamClient.dataClient.binaryDataByFilter(
++        filter,
++        20, // Limit - we only need recent notes
++        VIAM.dataApi.Order.DESCENDING,
++        undefined,
++        false,
++        false,
++        true // Include binary data!
++      );
++
++      // Collect notes for this pass
++      const notesForPass: Array<{
++        note: PassNote,
++        binaryId: string,
++        createdAt: Date
++      }> = [];
++
++      for (const item of binaryData.data) {
++        if (!item.metadata?.binaryDataId || !item.binary) continue;
++
++        try {
++          const noteJson = new TextDecoder().decode(item.binary);
+           const noteData = JSON.parse(noteJson) as PassNote;
+ 
+           if (noteData.pass_id === passId) {
+-            passNotes.push(noteData);
++            notesForPass.push({
++              note: noteData,
++              binaryId: item.metadata.binaryDataId,
++              createdAt: new Date(noteData.created_at)
++            });
+           }
++        } catch (error) {
++          console.warn("Failed to process note:", error);
+         }
+-      } catch (parseError) {
+-        console.warn("Failed to parse note data:", parseError);
+       }
+-    }
+ 
+-    console.log("Retrieved notes:", passNotes);
+-    return passNotes;
++      // Delete old notes if more than 1
++      if (notesForPass.length > 1) {
++        notesForPass.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
++        const idsToDelete = notesForPass.slice(1).map(item => item.binaryId);
++
++        console.log(`Cleaning up ${idsToDelete.length} old notes for pass ${passId}`);
++
++        if (idsToDelete.length > 0) {
++          await this.viamClient.dataClient.deleteBinaryDataByIds(idsToDelete);
++        }
++      }
++    } catch (error) {
++      console.error("Failed to clean up old notes:", error);
++    }
+   }
+ 
+   /**
+-   * Fetch notes for multiple passes
++   * Fetch all notes for a specific pass
+    */
+-  async fetchNotesForPasses(passIds: string[]): Promise<Map<string, PassNote[]>> {
++  async fetchPassNotes(passId: string): Promise<PassNote[]> {
+     if (!this.viamClient) {
+       throw new Error("Viam client not initialized");
+     }
+ 
++    console.log(`Fetching notes for pass ${passId}`);
++    const startTime = Date.now();
++
+     const filter = {
+       robotId: this.machineId,
+       componentName: "sanding-notes",
+       componentType: "rdk:component:generic",
+-      tags: ["sanding-notes"]
++      tags: [`pass:${passId}`] // Use the specific tag for faster filtering
+     } as unknown as VIAM.dataApi.Filter;
+ 
+     const binaryData = await this.viamClient.dataClient.binaryDataByFilter(
+       filter,
+-      500, // higher limit for multiple passes
++      20,
+       VIAM.dataApi.Order.DESCENDING,
+       undefined,
+       false,
+       false,
+-      false
++      true // Keep this to include binary data in one call
+     );
+ 
+-    const notesByPassId = new Map<string, PassNote[]>();
+-
+-    // Initialize empty arrays for all requested pass IDs
+-    passIds.forEach(passId => {
+-      notesByPassId.set(passId, []);
+-    });
+-
+-    // Parse and organize notes by pass ID
+-    for (const item of binaryData.data) {
+-      try {
+-        const noteDataArray = await this.viamClient.dataClient.binaryDataByIds([item.metadata!.binaryDataId!]);
+-        if (noteDataArray.length > 0) {
+-          const binaryDataItem = noteDataArray[0];
+-
+-          if (binaryDataItem.binary) {
+-            const noteJson = new TextDecoder().decode(binaryDataItem.binary);
+-            const noteData = JSON.parse(noteJson) as PassNote;
+-
+-            // Only include notes for requested pass IDs
+-            if (passIds.includes(noteData.pass_id)) {
+-              const existingNotes = notesByPassId.get(noteData.pass_id) || [];
+-              existingNotes.push(noteData);
+-              notesByPassId.set(noteData.pass_id, existingNotes);
+-            }
+-          }
+-        }
+-      } catch (parseError) {
+-        console.warn("Failed to parse note data:", parseError);
+-      }
+-    }
++    // The rest of the function can be simplified as you no longer need to filter by pass_id in the loop
++    const passNotes: PassNote[] = binaryData.data.map(item => {
++      const noteJson = new TextDecoder().decode(item.binary!);
++      return JSON.parse(noteJson) as PassNote;
++    }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+ 
+-    return notesByPassId;
++    console.log(`Retrieved ${passNotes.length} notes in ${Date.now() - startTime}ms`);
++    return passNotes;
+   }
+ 
+   /**

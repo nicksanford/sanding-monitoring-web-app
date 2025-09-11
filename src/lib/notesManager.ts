@@ -19,7 +19,7 @@ export class NotesManager {
   /**
    * Save a note for a specific pass
    */
-  async savePassNote(passId: string, noteText: string, partId: string): Promise<void> {
+  async savePassNote(passId: string, noteText: string, partId: string): Promise<PassNote> {
     if (!this.viamClient) {
       throw new Error("Viam client not initialized");
     }
@@ -43,19 +43,96 @@ export class NotesManager {
     const noteJson = JSON.stringify(noteData);
     const binaryData = new TextEncoder().encode(noteJson);
 
-    // Upload the note as binary data
-    await this.viamClient.dataClient.binaryDataCaptureUpload(
-      binaryData,                     // binary data
-      partId,                         // partId
-      "rdk:component:generic",        // componentType
-      "sanding-notes",                // componentName
-      "SaveNote",                     // methodName
-      ".json",                        // fileExtension
-      [now, now],                     // methodParameters (start and end time)
-      ["sanding-notes"]               // tags
-    );
+    try {
+      // Upload the new note with pass_id in tags for easier filtering
+      await this.viamClient.dataClient.binaryDataCaptureUpload(
+        binaryData,
+        partId,
+        "rdk:component:generic",
+        "sanding-notes",
+        "SaveNote",
+        ".json",
+        [now, now],
+        ["sanding-notes", `pass:${passId}`] // Add pass ID as a tag
+      );
 
-    console.log("Note saved successfully!");
+      console.log("Note saved successfully!");
+
+      // Run cleanup asynchronously - don't wait for it
+      this.deleteOldNotes(passId)
+        .then(() => console.log("Background cleanup completed"))
+        .catch(error => console.warn("Background cleanup failed:", error));
+
+      // Return immediately so UI can update
+      return noteData;
+    } catch (error) {
+      console.error("Failed to save note:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete old notes for a pass, keeping only the most recent one
+   */
+  async deleteOldNotes(passId: string): Promise<void> {
+    try {
+      const filter = {
+        robotId: this.machineId,
+        componentName: "sanding-notes",
+        componentType: "rdk:component:generic",
+        tags: ["sanding-notes"]
+      } as unknown as VIAM.dataApi.Filter;
+
+      const binaryData = await this.viamClient.dataClient.binaryDataByFilter(
+        filter,
+        20, // Limit - we only need recent notes
+        VIAM.dataApi.Order.DESCENDING,
+        undefined,
+        false,
+        false,
+        true // Include binary data!
+      );
+
+      // Collect notes for this pass
+      const notesForPass: Array<{
+        note: PassNote,
+        binaryId: string,
+        createdAt: Date
+      }> = [];
+
+      for (const item of binaryData.data) {
+        if (!item.metadata?.binaryDataId || !item.binary) continue;
+
+        try {
+          const noteJson = new TextDecoder().decode(item.binary);
+          const noteData = JSON.parse(noteJson) as PassNote;
+
+          if (noteData.pass_id === passId) {
+            notesForPass.push({
+              note: noteData,
+              binaryId: item.metadata.binaryDataId,
+              createdAt: new Date(noteData.created_at)
+            });
+          }
+        } catch (error) {
+          console.warn("Failed to process note:", error);
+        }
+      }
+
+      // Delete old notes if more than 1
+      if (notesForPass.length > 1) {
+        notesForPass.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        const idsToDelete = notesForPass.slice(1).map(item => item.binaryId);
+
+        console.log(`Cleaning up ${idsToDelete.length} old notes for pass ${passId}`);
+
+        if (idsToDelete.length > 0) {
+          await this.viamClient.dataClient.deleteBinaryDataByIds(idsToDelete);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to clean up old notes:", error);
+    }
   }
 
   /**
@@ -66,115 +143,34 @@ export class NotesManager {
       throw new Error("Viam client not initialized");
     }
 
-    // Use correct filter properties and cast to unknown first
-    const filter = {
-      robotId: this.machineId,
-      componentName: "sanding-notes",
-      componentType: "rdk:component:generic",
-      tags: ["sanding-notes"]
-    } as unknown as VIAM.dataApi.Filter;
-
-    const binaryData = await this.viamClient.dataClient.binaryDataByFilter(
-      filter,
-      100, // limit
-      VIAM.dataApi.Order.DESCENDING,
-      undefined, // no pagination token
-      false,
-      false,
-      false
-    );
-
-    // Filter and parse notes for this specific pass
-    const passNotes: PassNote[] = [];
-    for (const item of binaryData.data) {
-      try {
-        // Use binaryDataByIds to get the actual binary data
-        const noteDataArray = await this.viamClient.dataClient.binaryDataByIds([item.metadata!.binaryDataId!]);
-        if (noteDataArray.length > 0) {
-          // Properly access binary data from the response
-          const binaryDataItem = noteDataArray[0];
-          let noteBytes: Uint8Array;
-
-          if (binaryDataItem.binary) {
-            noteBytes = binaryDataItem.binary;
-          } else {
-            console.warn("No binary data found in response");
-            continue;
-          }
-
-          const noteJson = new TextDecoder().decode(noteBytes);
-          const noteData = JSON.parse(noteJson) as PassNote;
-
-          if (noteData.pass_id === passId) {
-            passNotes.push(noteData);
-          }
-        }
-      } catch (parseError) {
-        console.warn("Failed to parse note data:", parseError);
-      }
-    }
-
-    console.log("Retrieved notes:", passNotes);
-    return passNotes;
-  }
-
-  /**
-   * Fetch notes for multiple passes
-   */
-  async fetchNotesForPasses(passIds: string[]): Promise<Map<string, PassNote[]>> {
-    if (!this.viamClient) {
-      throw new Error("Viam client not initialized");
-    }
+    console.log(`Fetching notes for pass ${passId}`);
+    const startTime = Date.now();
 
     const filter = {
       robotId: this.machineId,
       componentName: "sanding-notes",
       componentType: "rdk:component:generic",
-      tags: ["sanding-notes"]
+      tags: [`pass:${passId}`] // Use the specific tag for faster filtering
     } as unknown as VIAM.dataApi.Filter;
 
     const binaryData = await this.viamClient.dataClient.binaryDataByFilter(
       filter,
-      500, // higher limit for multiple passes
+      20,
       VIAM.dataApi.Order.DESCENDING,
       undefined,
       false,
       false,
-      false
+      true // Keep this to include binary data in one call
     );
 
-    const notesByPassId = new Map<string, PassNote[]>();
+    // The rest of the function can be simplified as you no longer need to filter by pass_id in the loop
+    const passNotes: PassNote[] = binaryData.data.map(item => {
+      const noteJson = new TextDecoder().decode(item.binary!);
+      return JSON.parse(noteJson) as PassNote;
+    }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-    // Initialize empty arrays for all requested pass IDs
-    passIds.forEach(passId => {
-      notesByPassId.set(passId, []);
-    });
-
-    // Parse and organize notes by pass ID
-    for (const item of binaryData.data) {
-      try {
-        const noteDataArray = await this.viamClient.dataClient.binaryDataByIds([item.metadata!.binaryDataId!]);
-        if (noteDataArray.length > 0) {
-          const binaryDataItem = noteDataArray[0];
-
-          if (binaryDataItem.binary) {
-            const noteJson = new TextDecoder().decode(binaryDataItem.binary);
-            const noteData = JSON.parse(noteJson) as PassNote;
-
-            // Only include notes for requested pass IDs
-            if (passIds.includes(noteData.pass_id)) {
-              const existingNotes = notesByPassId.get(noteData.pass_id) || [];
-              existingNotes.push(noteData);
-              notesByPassId.set(noteData.pass_id, existingNotes);
-            }
-          }
-        }
-      } catch (parseError) {
-        console.warn("Failed to parse note data:", parseError);
-      }
-    }
-
-    return notesByPassId;
+    console.log(`Retrieved ${passNotes.length} notes in ${Date.now() - startTime}ms`);
+    return passNotes;
   }
 
   /**

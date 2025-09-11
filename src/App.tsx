@@ -4,7 +4,7 @@ import AppInterface from './AppInterface';
 import Cookies from "js-cookie";
 import { JsonValue } from '@viamrobotics/sdk';
 import { Pass } from './AppInterface';
-import { createNotesManager, PassNote } from './lib/notesManager';
+import { PassNote } from './lib/notesManager';
 
 // const videoStoreName = "video-store-1";
 // const sanderName = "sander-module";
@@ -161,20 +161,6 @@ function App() {
       });
 
       setPassSummaries(processedPasses);
-
-      // Fetch all notes for all passes at once
-      if (processedPasses.length > 0 && extractedPartId) {
-        console.log("Fetching notes for all passes...");
-        try {
-          const notesManager = createNotesManager(viamClient, machineId);
-          const passIds = processedPasses.map(pass => pass.pass_id).filter(Boolean);
-          const allNotes = await notesManager.fetchNotesForPasses(passIds);
-          setPassNotes(allNotes);
-          console.log("Fetched notes for", passIds.length, "passes");
-        } catch (error) {
-          console.error("Failed to fetch notes:", error);
-        }
-      }
 
       let allFiles = [];
       let last = undefined;
