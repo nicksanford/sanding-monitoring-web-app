@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import * as VIAM from "@viamrobotics/sdk";
 import AppInterface from './AppInterface';
 import Cookies from "js-cookie";
@@ -18,7 +18,7 @@ function App() {
   const [viamClient, setViamClient] = useState<VIAM.ViamClient | null>(null);
   const [robotClient, setRobotClient] = useState<VIAM.RobotClient | null>(null);
   const [fetchTimestamp, setFetchTimestamp] = useState<Date | null>(null);
-  const [loadingPasses, setLoadingPasses] = useState<Set<string>>(new Set());
+  const [loadingPasses] = useState<Set<string>>(new Set());
 
   const machineNameMatch = window.location.pathname.match(machineNameRegex);
   const machineName = machineNameMatch ? machineNameMatch[1] : null;
@@ -114,7 +114,7 @@ function App() {
     setFetchTimestamp(null)
   };
 
-  useEffect(() => {
+    useEffect(() => {
     const fetchPasses = async () => {
       console.log("Fetching data start");
 
@@ -190,15 +190,6 @@ function App() {
     
       fetchPasses();
     }, [apiKeyId, apiKeySecret, hostname, machineId, locationId]);
-
-
-  // Fetch videos when passSummaries and viamClient are available
-  useEffect(() => {
-    if (passSummaries.length > 0 && viamClient) {
-      const earliestVideoTime = passSummaries[passSummaries.length - 1].start;
-      fetchFiles(earliestVideoTime);
-    }
-  }, [passSummaries, viamClient]);
 
   return (
     <AppInterface 
