@@ -71,11 +71,12 @@ const AppInterface: React.FC<AppViewProps> = ({
     // Fetch and log binary data for the selected camera
     if (resourceName && viamClient && robotClient) {
       try {
-        console.log(`Fetching all camera data for today (9/15/2025) for camera: ${resourceName}`);
+        console.log(`Fetching all camera data for today for camera: ${resourceName}`);
         
         // Create a filter that combines component name and time range
-        // Set start date to beginning of today (9/15/2025)
-        const startDate = new Date('2025-09-15T00:00:00Z');
+        // Set start date to the beginning of the current day
+        const startDate = new Date();
+        startDate.setUTCHours(0, 0, 0, 0);
         const endDate = new Date(); // current time
         
         console.log(`Fetching entries from ${startDate.toISOString()} to ${endDate.toISOString()}`);
