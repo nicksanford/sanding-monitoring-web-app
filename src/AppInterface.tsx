@@ -3,6 +3,7 @@ import * as VIAM from "@viamrobotics/sdk";
 import './AppInterface.css';
 import StepVideosGrid from './StepVideosGrid';
 import VideoStoreSelector from './VideoStoreSelector';
+import CameraSelector from './CameraSelector';
 import { 
   formatDurationToMinutesSeconds,
 } from './lib/videoUtils';
@@ -62,6 +63,10 @@ const AppInterface: React.FC<AppViewProps> = ({
       newExpandedRows.delete(index);
     }
     setExpandedRows(newExpandedRows);
+  };
+
+  const handleCameraSelected = (client: VIAM.CameraClient | null, resourceName: string | null) => {
+    console.log('Camera selected:', resourceName, client ? 'connected' : 'disconnected');
   };
 
   const getStepVideos = (step: Step) => {
@@ -129,6 +134,11 @@ const AppInterface: React.FC<AppViewProps> = ({
             <VideoStoreSelector
               robotClient={robotClient || null}
               onVideoStoreSelected={setVideoStoreClient}
+            />
+            
+            <CameraSelector
+              robotClient={robotClient || null}
+              onCameraSelected={handleCameraSelected}
             />
             
             <div className="viam-table-container">
