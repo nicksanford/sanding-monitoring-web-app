@@ -71,13 +71,14 @@ const AppInterface: React.FC<AppViewProps> = ({
     // Fetch and log binary data for the selected camera
     if (resourceName && viamClient && robotClient) {
       try {
-        console.log(`Fetching binary data for camera: ${resourceName}`);
+        console.log(`Fetching all camera data for today (9/15/2025) for camera: ${resourceName}`);
         
         // Create a filter that combines component name and time range
-        const startDate = new Date('2025-01-01T00:00:00Z'); // Go back to Jan 1, 2025
+        // Set start date to beginning of today (9/15/2025)
+        const startDate = new Date('2025-09-15T00:00:00Z');
         const endDate = new Date(); // current time
         
-        console.log(`Filtering from ${startDate.toISOString()} to ${endDate.toISOString()}`);
+        console.log(`Fetching entries from ${startDate.toISOString()} to ${endDate.toISOString()}`);
         
         const filter = new VIAM.dataApi.Filter({
           componentName: resourceName,
@@ -88,62 +89,55 @@ const AppInterface: React.FC<AppViewProps> = ({
           } as VIAM.dataApi.CaptureInterval,
         });
         
-        const allBinaryData: VIAM.dataApi.BinaryData[] = [];
+        // Fetch all entries from today
+        const allData: VIAM.dataApi.BinaryData[] = [];
         let nextToken: string | undefined = undefined;
-        const maxEntries = 100;
         
-        // Make multiple requests to get up to 100 entries
-        // Since includeBinaryData=true requires limit=1, we'll make multiple calls
-        for (let i = 0; i < maxEntries; i++) {
-          try {
-            const binaryDataResponse = await viamClient.dataClient.binaryDataByFilter(
-              filter,
-              1, // limit must be 1 when includeBinaryData is true
-              VIAM.dataApi.Order.DESCENDING,
-              nextToken, // pagination token
-              true, // includeBinaryData
-              false, // countOnly
-              false // includeInternalData
-            );
-            
-            if (binaryDataResponse.data.length === 0) {
-              break; // No more data available
-            }
-            
-            allBinaryData.push(...binaryDataResponse.data);
-            nextToken = binaryDataResponse.last;
-            
-            // If no more pages, break
-            if (!nextToken) {
-              break;
-            }
-          } catch (pageError) {
-            console.error(`Error fetching page ${i + 1}:`, pageError);
+        while (true) {
+          const binaryDataResponse = await viamClient.dataClient.binaryDataByFilter(
+            filter,
+            100, // get up to 100 entries per request
+            VIAM.dataApi.Order.DESCENDING, // Get the most recent first
+            nextToken, // Use pagination token for subsequent requests
+            false, // Don't include binary data to speed up the initial query
+            false, // Not just counting
+            false // Don't include internal data
+          );
+          
+          if (binaryDataResponse.data.length === 0) {
+            break; // No more data
+          }
+          
+          allData.push(...binaryDataResponse.data);
+          console.log(`Fetched batch of ${binaryDataResponse.data.length} entries`);
+          
+          // If no more pages, break
+          nextToken = binaryDataResponse.last;
+          if (!nextToken) {
             break;
           }
         }
         
-        console.log(`Found ${allBinaryData.length} binary data entries for camera ${resourceName}`);
+        console.log(`Found ${allData.length} total entries for camera ${resourceName} from today`);
         
-        // Log each binary data entry
-        allBinaryData.forEach((data, index) => {
-          console.log(`Binary Data Entry ${index + 1}:`, {
+        // Group data by type for reporting
+        const typeCount: Record<string, number> = {};
+        allData.forEach(data => {
+          // Use fileExt instead of mimeType since mimeType doesn't exist on BinaryMetadata
+          const fileType = data.metadata?.fileExt || 'unknown';
+          typeCount[fileType] = (typeCount[fileType] || 0) + 1;
+        });
+        
+        console.log('Data breakdown by file extension:', typeCount);
+        
+        // Log some sample entries (first 5)
+        allData.slice(0, 5).forEach((data, index) => {
+          console.log(`Sample Entry ${index + 1}:`, {
             id: data.metadata?.binaryDataId,
             fileName: data.metadata?.fileName,
             timeRequested: data.metadata?.timeRequested?.toDate(),
-            timeReceived: data.metadata?.timeReceived?.toDate(),
-            uri: data.metadata?.uri,
-            sizeBytes: data.binary?.length || 0,
-            fileExtension: data.metadata?.fileExt,
-            annotations: data.metadata?.annotations
+            fileExt: data.metadata?.fileExt || 'unknown',
           });
-        });
-        
-        // Log summary
-        console.log('Binary Data Summary:', {
-          fetchedEntries: allBinaryData.length,
-          requestsMade: Math.min(allBinaryData.length, maxEntries),
-          hasMoreData: !!nextToken
         });
         
       } catch (error) {
