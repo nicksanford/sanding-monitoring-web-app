@@ -44,6 +44,7 @@ const AppInterface: React.FC<AppViewProps> = ({
   machineName,
   viamClient,
   passSummaries = [],
+  files,
   videoFiles,
   robotClient,
   fetchVideos,
@@ -345,6 +346,185 @@ const AppInterface: React.FC<AppViewProps> = ({
                                               );
                                           })}
                                         </div>
+                                      
+                                        {/* Files section for all files in pass time range */}
+                                        {(() => {
+                                          const passStart = new Date(pass.start);
+                                          const passEnd = new Date(pass.end);
+                                          
+                                          // Always include files that fall within the pass time range (this includes .pcd files)
+                                          const passTimeRangeFileIDS: string[] = [];
+                                          files.forEach((file, binaryDataId) => {
+                                            if (file.metadata?.timeRequested) {
+                                              const fileTime = file.metadata.timeRequested.toDate();
+                                              if (fileTime >= passStart && fileTime <= passEnd) {
+                                                passTimeRangeFileIDS.push(binaryDataId);
+                                              }
+                                            }
+                                          });
+                                          
+                                          // Additionally include pass-specific files if pass_id is not blank
+                                          const passFileIDs: string[] = [];
+                                          if (pass.pass_id && pass.pass_id.trim() !== '') {
+                                            files.forEach((file, binaryDataId) => {
+                                              if (file.metadata?.fileName && file.metadata.fileName.split("/").filter((y) => y == pass.pass_id).length > 0) {
+                                                passFileIDs.push(binaryDataId);
+                                              }
+                                            });
+                                          }
+                                          
+                                          const ids = new Set([...passFileIDs, ...passTimeRangeFileIDS]);
+                                          const passFiles = Array.from(files.values()).filter((x) => ids.has(x.metadata!.binaryDataId)).sort((a, b) => {
+                                            const timeA = a.metadata!.timeRequested!.toDate().getTime();
+                                            const timeB = b.metadata!.timeRequested!.toDate().getTime();
+                                            return timeA - timeB;
+                                          })
+
+                                          // Determine if we are in a loading state for this specific row.
+                                          const isLoading = fetchTimestamp && fetchTimestamp > pass.start;
+
+                                          // Show a loading indicator inside the expanded row while fetching files for this pass.
+                                          if (isLoading && passFiles.length === 0) {
+                                            return (
+                                              <div className="pass-files-section" style={{
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                padding: '20px',
+                                                minHeight: '100px',
+                                              }}>
+                                                <span style={{ 
+                                                  display: 'inline-block',
+                                                  width: '28px',
+                                                  height: '28px',
+                                                  border: '3px solid rgba(59, 130, 246, 0.2)',
+                                                  borderTopColor: '#3b82f6',
+                                                  borderRadius: '50%',
+                                                  animation: 'spin 1s linear infinite'
+                                                }}></span>
+                                                <p style={{ marginTop: '12px', color: '#6b7280', fontSize: '14px' }}>
+                                                  Loading files...
+                                                </p>
+                                              </div>
+                                            );
+                                          }
+
+                                          return (
+                                            <div className="pass-files-section">
+                                              <h4>
+                                                Files captured during this pass
+                                              </h4>
+                                              
+                                              {passFiles.length > 0 && (
+                                                <div style={{ 
+                                                  display: 'flex',
+                                                  flexWrap: 'wrap',
+                                                  gap: '8px',
+                                                  overflowY: 'auto',
+                                                  padding: '4px',
+                                                }}>
+                                                  {passFiles.map((file, fileIndex) => {
+                                                    const fileName = file.metadata?.fileName?.split('/').pop() || 'Unknown file';
+                                                    
+                                                    return (
+                                                      <div 
+                                                        key={fileIndex}
+                                                        style={{
+                                                          display: 'flex',
+                                                          alignItems: 'center',
+                                                          justifyContent: 'space-between',
+                                                          padding: '8px 12px',
+                                                          backgroundColor: '#f9fafb',
+                                                          border: '1px solid #e5e7eb',
+                                                          borderRadius: '6px',
+                                                          fontSize: '13px',
+                                                          cursor: 'pointer',
+                                                          transition: 'all 0.2s ease',
+                                                          flex: '1 0 calc(50% - 8px)',
+                                                          minWidth: '280px',
+                                                          maxWidth: 'calc(50% - 8px)',
+                                                          boxSizing: 'border-box'
+                                                        }}
+                                                        onMouseEnter={(e) => {
+                                                          e.currentTarget.style.backgroundColor = '#e5e7eb';
+                                                          e.currentTarget.style.transform = 'translateY(-1px)';
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                          e.currentTarget.style.backgroundColor = '#f9fafb';
+                                                          e.currentTarget.style.transform = 'translateY(0)';
+                                                        }}
+                                                      >
+                                                        <div style={{ 
+                                                          display: 'flex', 
+                                                          alignItems: 'center', 
+                                                          gap: '8px',
+                                                          flex: 1, 
+                                                          minWidth: 0,
+                                                          overflow: 'hidden'
+                                                        }}>
+                                                          <span style={{ 
+                                                            color: '#374151',
+                                                            textOverflow: 'ellipsis',
+                                                            overflow: 'hidden',
+                                                            whiteSpace: 'nowrap',
+                                                            flex: 1
+                                                          }} title={fileName}>
+                                                            {fileName}
+                                                          </span>
+                                                          <span style={{ 
+                                                            color: '#9ca3af', 
+                                                            fontSize: '12px',
+                                                            whiteSpace: 'nowrap',
+                                                            flexShrink: 0
+                                                          }}>
+                                                            {file.metadata?.timeRequested?.toDate().toLocaleTimeString() || ''}
+                                                          </span>
+                                                        </div>
+                                                        <a 
+                                                          href={file.metadata?.uri}
+                                                          download={file.metadata?.fileName?.split('/').pop() || 'download'}
+                                                          style={{
+                                                            marginLeft: '12px',
+                                                            padding: '4px 12px',
+                                                            backgroundColor: '#3b82f6',
+                                                            color: 'white',
+                                                            borderRadius: '4px',
+                                                            textDecoration: 'none',
+                                                            fontSize: '12px',
+                                                            whiteSpace: 'nowrap',
+                                                            transition: 'background-color 0.2s',
+                                                            flexShrink: 0,
+                                                            cursor: 'pointer',
+                                                            display: 'inline-block'
+                                                          }}
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                          }}
+                                                          onMouseEnter={(e) => {
+                                                            e.currentTarget.style.backgroundColor = '#2563eb';
+                                                          }}
+                                                          onMouseLeave={(e) => {
+                                                            e.currentTarget.style.backgroundColor = '#3b82f6';
+                                                          }}
+                                                        >
+                                                          Download
+                                                        </a>
+                                                      </div>
+                                                    );
+                                                  })}
+                                                </div>
+                                              )}
+                                              
+                                              {/* Show message if no files are found in the current view */}
+                                              {passFiles.length === 0 && !isLoading && (
+                                                <p className="no-files-message">
+                                                  No files found for this pass.
+                                                </p>
+                                              )}
+                                            </div>
+                                          );
+                                        })()}
                                       </div>
                                     </div>
                                   </td>
