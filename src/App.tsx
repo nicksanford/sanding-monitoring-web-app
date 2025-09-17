@@ -170,7 +170,7 @@ function App() {
       const processedPasses: Pass[] = tabularData.map((item: any) => {
         const pass = item.data!.readings!;
         
-        const buildInfo = pass.build_info ? {...pass.build_info} : {};
+        const buildInfo = pass.build_info ? { ...pass.build_info } : {};
                 
         return {
           start: new Date(pass.start),
