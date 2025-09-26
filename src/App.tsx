@@ -5,6 +5,7 @@ import Cookies from "js-cookie";
 import { JsonValue } from '@viamrobotics/sdk';
 import { Pass } from './AppInterface';
 import { Timestamp } from '@bufbuild/protobuf';
+import { PassNote, createNotesManager } from './lib/notesManager';
 
 const sandingSummaryName = "sanding-summary";
 const sandingSummaryComponentType = "rdk:component:sensor";
@@ -19,6 +20,9 @@ function App() {
   const [viamClient, setViamClient] = useState<VIAM.ViamClient | null>(null);
   const [robotClient, setRobotClient] = useState<VIAM.RobotClient | null>(null);
   const [fetchTimestamp, setFetchTimestamp] = useState<Date | null>(null);
+  const [partId, setPartId] = useState<string>('');
+  const [passNotes, setPassNotes] = useState<Map<string, PassNote[]>>(new Map());
+  const [fetchingNotes, setFetchingNotes] = useState<boolean>(false);
 
   const machineNameMatch = window.location.pathname.match(machineNameRegex);
   const machineName = machineNameMatch ? machineNameMatch[1] : null;
@@ -27,7 +31,7 @@ function App() {
   const locationId = locationIdMatch ? locationIdMatch[1] : null;
 
   const machineInfo = window.location.pathname.split("/")[2];
-    
+
   const {
     apiKey: { id: apiKeyId, key: apiKeySecret },
     machineId,
@@ -38,7 +42,7 @@ function App() {
     if (!viamClient) return;
 
     const end = new Date();
-    
+
     console.log("Fetching for time range:", start, end);
     if (shouldSetLoadingState) {
       setFetchTimestamp(start);
@@ -65,12 +69,12 @@ function App() {
         false,
         false
       );
-      
+
       // Process files once and build files, videoFiles, and images lists
       const newFiles = new Map<string, VIAM.dataApi.BinaryData>();
       const newVideoFiles = new Map<string, VIAM.dataApi.BinaryData>();
       const newImages = new Map<string, VIAM.dataApi.BinaryData>();
-      
+
       binaryData.data.forEach(file => {
         if (file.metadata?.binaryDataId) {
           const isVideo = file.metadata.fileName?.toLowerCase().includes('.mp4');
@@ -95,7 +99,7 @@ function App() {
       if (binaryData.data.length > 0 && shouldSetLoadingState) {
         setFetchTimestamp(binaryData.data[binaryData.data.length - 1].metadata!.timeRequested!.toDate());
       }
-      
+
       // Update both states with the processed files
       setFiles(prevFiles => {
         const updatedFiles = new Map(prevFiles);
@@ -104,7 +108,7 @@ function App() {
         });
         return updatedFiles;
       });
-      
+
       setVideoFiles(prevVideoFiles => {
         const updatedVideoFiles = new Map(prevVideoFiles);
         newVideoFiles.forEach((file, id) => {
@@ -120,13 +124,13 @@ function App() {
         });
         return updatedImageFiles;
       });
-      
+
       // Break if no more data to fetch
       if (!binaryData.last) break;
     }
     console.log("total files count:", files.size);
     console.log("total video files count:", videoFiles.size);
-    
+
     setFetchTimestamp(null)
   };
 
@@ -139,7 +143,7 @@ function App() {
 
       try {
         const robotClient = await viamClient.connectToMachine({
-          host: hostname, 
+          host: hostname,
           id: machineId,
         });
         setRobotClient(robotClient);
@@ -147,7 +151,7 @@ function App() {
         console.error('Failed to create robot client:', error);
         setRobotClient(null);
       }
-      
+
       const organizations = await viamClient.appClient.listOrganizations();
       console.log("Organizations:", organizations);
       if (organizations.length !== 1) {
@@ -182,7 +186,12 @@ function App() {
       const tabularData = await viamClient.dataClient.tabularDataByMQL(orgID, mqlQuery);
       console.log("Tabular Data:", tabularData);
 
-      // Process tabular data into pass summaries
+      let extractedPartId = '';
+      if (tabularData && tabularData.length > 0) {
+        extractedPartId = (tabularData[0] as any).part_id || '';
+        setPartId(extractedPartId);
+      }
+
       const processedPasses: Pass[] = tabularData.map((item: any) => {
         const pass = item.data!.readings!;
         const buildInfo = pass.build_info ? pass.build_info : {};
@@ -195,19 +204,42 @@ function App() {
             start: new Date(x.start),
             end: new Date(x.end),
             pass_id: pass.pass_id,
-          })): [],
+          })) : [],
           success: pass.success ?? true,
           pass_id: pass.pass_id,
           err_string: pass.err_string || null,
           build_info: buildInfo
         };
       });
+
       setPassSummaries(processedPasses);
+
+      // Fetch all notes for all passes incrementally
+      if (processedPasses.length > 0 && extractedPartId) {
+        const passIds = processedPasses.map(pass => pass.pass_id).filter(Boolean);
+
+        setFetchingNotes(true);
+        setPassNotes(new Map()); // Clear old notes before fetching
+
+        const notesManager = createNotesManager(viamClient, machineId);
+        await notesManager.fetchNotesForPasses(passIds, (batch) => {
+          setPassNotes(prevNotes => {
+            const newNotes = new Map(prevNotes);
+            batch.forEach((notes, passId) => {
+              const existing = newNotes.get(passId) || [];
+              newNotes.set(passId, [...existing, ...notes].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+            });
+            return newNotes;
+          });
+        });
+        setFetchingNotes(false);
+      }
+
       console.log("Fetching data end");
     };
-    
-      fetchPasses();
-    }, [apiKeyId, apiKeySecret, hostname, machineId, locationId]);
+
+    fetchPasses();
+  }, [apiKeyId, apiKeySecret, hostname, machineId, locationId]);
 
 
   // Fetch videos when passSummaries and viamClient are available
@@ -219,7 +251,7 @@ function App() {
   }, [passSummaries, viamClient]);
 
   return (
-    <AppInterface 
+    <AppInterface
       machineName={machineName}
       viamClient={viamClient!}
       passSummaries={passSummaries}
@@ -229,6 +261,11 @@ function App() {
       robotClient={robotClient}
       fetchVideos={fetchFiles}
       fetchTimestamp={fetchTimestamp}
+      machineId={machineId}
+      partId={partId}
+      passNotes={passNotes}
+      onNotesUpdate={setPassNotes}
+      fetchingNotes={fetchingNotes}
     />
   );
 }
