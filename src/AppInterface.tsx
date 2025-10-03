@@ -5,7 +5,7 @@ import StepVideosGrid from './StepVideosGrid';
 import VideoStoreSelector from './VideoStoreSelector';
 import ImageDisplay from './ImageDisplay';
 import BeforeAfterModal from './BeforeAfterModal';
-import { 
+import {
   formatDurationToMinutesSeconds,
 } from './lib/videoUtils';
 
@@ -19,6 +19,16 @@ interface AppViewProps {
   fetchVideos: (start: Date) => Promise<void>;
   machineName: string | null;
   fetchTimestamp: Date | null;
+  pagination?: {
+    currentPage: number;
+    totalPages: number;
+    itemsPerPage: number;
+    totalItems: number;
+    onPageChange: (page: number) => void;
+    daysPerPage?: boolean;
+    currentDaysDisplayed?: number;
+    totalEntries?: number;
+  };
 }
 
 export interface Step {
@@ -42,16 +52,17 @@ export interface Pass {
   };
 }
 
-const AppInterface: React.FC<AppViewProps> = ({ 
+const AppInterface: React.FC<AppViewProps> = ({
   machineName,
   viamClient,
   passSummaries = [],
-  files, 
+  files,
   videoFiles,
   imageFiles,
   robotClient,
   fetchVideos,
   fetchTimestamp,
+  pagination,
 }) => {
   const [activeRoute, setActiveRoute] = useState('live');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -82,26 +93,26 @@ const AppInterface: React.FC<AppViewProps> = ({
   const getBeforeAfterImages = (pass: Pass): { beforeImage: VIAM.dataApi.BinaryData | null, afterImage: VIAM.dataApi.BinaryData | null } => {
     const passStart = new Date(pass.start);
     const passEnd = new Date(pass.end);
-    
+
     const allCameraImages = Array.from(imageFiles.values()).filter(file => {
       if (file.metadata?.captureMetadata?.componentName !== selectedCamera || !file.metadata?.timeRequested) {
         return false;
       }
-      
+
       const imgTime = file.metadata.timeRequested.toDate();
       // Only consider images within the pass time range
       return imgTime >= passStart && imgTime <= passEnd;
     }).sort((a, b) => a.metadata!.timeRequested!.toDate().getTime() - b.metadata!.timeRequested!.toDate().getTime());
-    
+
     // Get the first image in the pass (closest to start)
     const beforeImage = allCameraImages[0];
-    
+
     // Get the last image in the pass (closest to end)
     const afterImage = allCameraImages[allCameraImages.length - 1];
 
-    return { 
-      beforeImage: beforeImage || null, 
-      afterImage: afterImage || null 
+    return {
+      beforeImage: beforeImage || null,
+      afterImage: afterImage || null
     };
   };
 
@@ -143,18 +154,18 @@ const AppInterface: React.FC<AppViewProps> = ({
       let totalFactoryTime = 0;
       let totalExecutionTime = 0;
       let totalOtherStepsTime = 0;
-      
+
       // Calculate both time and execution metrics
       passes.forEach(pass => {
         // Add pass duration to total time
         const passDuration = pass.end.getTime() - pass.start.getTime();
         totalFactoryTime += passDuration;
-        
+
         // Calculate execution time for percentage
         if (pass.steps && Array.isArray(pass.steps)) {
           pass.steps.forEach(step => {
             const stepDuration = step.end.getTime() - step.start.getTime();
-            
+
             // Look for the specific "executing" step (exact match or case-insensitive)
             if (step.name.toLowerCase() === 'executing') {
               totalExecutionTime += stepDuration;
@@ -200,15 +211,15 @@ const AppInterface: React.FC<AppViewProps> = ({
 
   const getStepVideos = (step: Step) => {
     if (!videoFiles || videoFiles.size === 0) return [];
-    
+
     let stepVideos: VIAM.dataApi.BinaryData[] = [];
-    
+
     videoFiles.forEach((file) => {
       if (!file.metadata || !file.metadata.fileName) return;
 
-      const isMatchingStep = file.metadata.fileName.includes(step.pass_id) && 
-                           file.metadata.fileName.includes(step.name);
-      
+      const isMatchingStep = file.metadata.fileName.includes(step.pass_id) &&
+        file.metadata.fileName.includes(step.name);
+
       if (isMatchingStep) {
         stepVideos.push(file);
       }
@@ -238,14 +249,14 @@ const AppInterface: React.FC<AppViewProps> = ({
     const totalSeconds = Math.floor(ms / 1000);
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
-    
+
     let displayText: string;
     if (hours > 0) {
       displayText = `${hours}h ${minutes}m`;
     } else {
       displayText = `${minutes}m`;
     }
-    
+
     return (
       <span title={`${Math.floor(ms / 60000)} minutes`}>
         {displayText}
@@ -257,7 +268,7 @@ const AppInterface: React.FC<AppViewProps> = ({
     <div className="appInterface">
       <header className="flex items-center sticky top-0 z-10 mb-4 px-4 py-3 border-b bg-zinc-50 shadow-none md:shadow-xs">
         <div className="w-1/3 h-5 font-semibold text-zinc-900">Sanding Control Interface</div>
-        
+
         <div className="w-1/3 flex justify-center">
           <div className="flex flex-row items-center gap-2">
             <button
@@ -271,38 +282,38 @@ const AppInterface: React.FC<AppViewProps> = ({
 
         <div className="w-1/3"></div>
       </header>
-      
+
       <main className="mainContent">
         {activeRoute === 'live' && (
           <section>
             <h2 className="text-xl font-semibold text-zinc-900 mb-4">Passes
               {machineName ? ` for ${machineName}` : ''}
             </h2>
-            
-            <div className='flex gap-8'>
-            <VideoStoreSelector
-              robotClient={robotClient || null}
-              onVideoStoreSelected={setVideoStoreClient}
-            />
 
-            {cameraComponentNames.length > 0 && (
-              <div className="video-store-selector">
-                <label htmlFor="camera-select" className="video-store-selector-label">
-                  Select camera resource
-                </label>
-                <select
-                  id="camera-select"
-                  value={selectedCamera}
-                  onChange={(e) => setSelectedCamera(e.target.value)}
-                  className="video-store-selector-select"
-                >
-                  <option value="">Select a camera resource</option>
-                  {cameraComponentNames.map(name => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+            <div className='flex gap-8'>
+              <VideoStoreSelector
+                robotClient={robotClient || null}
+                onVideoStoreSelected={setVideoStoreClient}
+              />
+
+              {cameraComponentNames.length > 0 && (
+                <div className="video-store-selector">
+                  <label htmlFor="camera-select" className="video-store-selector-label">
+                    Select camera resource
+                  </label>
+                  <select
+                    id="camera-select"
+                    value={selectedCamera}
+                    onChange={(e) => setSelectedCamera(e.target.value)}
+                    className="video-store-selector-select"
+                  >
+                    <option value="">Select a camera resource</option>
+                    {cameraComponentNames.map(name => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             <div className="viam-table-container">
@@ -364,7 +375,7 @@ const AppInterface: React.FC<AppViewProps> = ({
                         </tr>
                         {passes.map((pass: Pass, passIndex: number) => {
                           const globalIndex = `${dayIndex}-${passIndex}`;
-                          
+
                           return (
                             <React.Fragment key={pass.pass_id || globalIndex}>
                               <tr className="expandable-row"
@@ -455,7 +466,7 @@ const AppInterface: React.FC<AppViewProps> = ({
                                           )}
                                         </div>
                                       )}
-                                      
+
                                       <div className="passes-container">
                                         <div className="steps-grid">
                                           {/* Camera Images */}
@@ -463,12 +474,12 @@ const AppInterface: React.FC<AppViewProps> = ({
                                             const { beforeImage, afterImage } = getBeforeAfterImages(pass);
                                             const passStart = pass.start;
                                             const passEnd = pass.end;
-                                            
+
                                             // If no images at all, show a message
                                             if (!beforeImage && !afterImage) {
                                               return (
                                                 <div className="step-card" style={{ order: 0 }}>
-                                                  <div style={{ 
+                                                  <div style={{
                                                     display: 'flex',
                                                     height: '100%',
                                                     alignItems: 'center',
@@ -484,7 +495,7 @@ const AppInterface: React.FC<AppViewProps> = ({
                                                 </div>
                                               );
                                             }
-                                            
+
                                             return (
                                               <>
                                                 {/* Start Image */}
@@ -500,9 +511,9 @@ const AppInterface: React.FC<AppViewProps> = ({
                                                         )} from start)
                                                       </span>
                                                     </div>
-                                                    
-                                                    <div 
-                                                      className="step-image-container clickable-image" 
+
+                                                    <div
+                                                      className="step-image-container clickable-image"
                                                       style={{ marginTop: "12px", width: "100%", overflow: "hidden" }}
                                                       onClick={() => openBeforeAfterModal(beforeImage, afterImage)}
                                                     >
@@ -524,9 +535,9 @@ const AppInterface: React.FC<AppViewProps> = ({
                                                         )} before end)
                                                       </span>
                                                     </div>
-                                                    
-                                                    <div 
-                                                      className="step-image-container clickable-image" 
+
+                                                    <div
+                                                      className="step-image-container clickable-image"
                                                       style={{ marginTop: "12px", width: "100%", overflow: "hidden" }}
                                                       onClick={() => openBeforeAfterModal(beforeImage, afterImage)}
                                                     >
@@ -537,7 +548,7 @@ const AppInterface: React.FC<AppViewProps> = ({
                                               </>
                                             );
                                           })()}
-                                          
+
                                           {/* Regular step cards */}
                                           {pass.steps.map((step: Step) => {
                                             const stepVideos = getStepVideos(step);
@@ -557,7 +568,7 @@ const AppInterface: React.FC<AppViewProps> = ({
                                                   </div>
                                                 </div>
                                                 <div className="step-duration">{formatDurationToMinutesSeconds(step.start, step.end)}</div>
-                                                
+
                                                 <StepVideosGrid
                                                   step={step}
                                                   stepVideos={stepVideos}
@@ -571,12 +582,12 @@ const AppInterface: React.FC<AppViewProps> = ({
                                             );
                                           })}
                                         </div>
-                                      
+
                                         {/* Keep the "all files in pass time range" section unchanged */}
                                         {(() => {
                                           const passStart = new Date(pass.start);
                                           const passEnd = new Date(pass.end);
-                                          
+
                                           // Always include files that fall within the pass time range (this includes .pcd files)
                                           const passTimeRangeFileIDS: string[] = [];
                                           files.forEach((file, binaryDataId) => {
@@ -587,7 +598,7 @@ const AppInterface: React.FC<AppViewProps> = ({
                                               }
                                             }
                                           });
-                                          
+
 
                                           // Additionally include pass-specific files if pass_id is not blank
                                           const passFileIDs: string[] = [];
@@ -598,7 +609,7 @@ const AppInterface: React.FC<AppViewProps> = ({
                                               }
                                             });
                                           }
-                                          
+
 
                                           const ids = new Set([...passFileIDs, ...passTimeRangeFileIDS]);
                                           const passFiles = Array.from(files.values()).filter((x) => ids.has(x.metadata!.binaryDataId)).sort((a, b) => {
@@ -621,7 +632,7 @@ const AppInterface: React.FC<AppViewProps> = ({
                                                 padding: '20px',
                                                 minHeight: '100px',
                                               }}>
-                                                <span style={{ 
+                                                <span style={{
                                                   display: 'inline-block',
                                                   width: '28px',
                                                   height: '28px',
@@ -642,9 +653,9 @@ const AppInterface: React.FC<AppViewProps> = ({
                                               <h4>
                                                 Files captured during this pass
                                               </h4>
-                                              
+
                                               {passFiles.length > 0 && (
-                                                <div style={{ 
+                                                <div style={{
                                                   display: 'flex',
                                                   flexWrap: 'wrap',
                                                   gap: '8px',
@@ -653,9 +664,9 @@ const AppInterface: React.FC<AppViewProps> = ({
                                                 }}>
                                                   {passFiles.map((file, fileIndex) => {
                                                     const fileName = file.metadata?.fileName?.split('/').pop() || 'Unknown file';
-                                                    
+
                                                     return (
-                                                      <div 
+                                                      <div
                                                         key={fileIndex}
                                                         style={{
                                                           display: 'flex',
@@ -682,15 +693,15 @@ const AppInterface: React.FC<AppViewProps> = ({
                                                           e.currentTarget.style.transform = 'translateY(0)';
                                                         }}
                                                       >
-                                                        <div style={{ 
-                                                          display: 'flex', 
-                                                          alignItems: 'center', 
+                                                        <div style={{
+                                                          display: 'flex',
+                                                          alignItems: 'center',
                                                           gap: '8px',
-                                                          flex: 1, 
+                                                          flex: 1,
                                                           minWidth: 0,
                                                           overflow: 'hidden'
                                                         }}>
-                                                          <span style={{ 
+                                                          <span style={{
                                                             color: '#374151',
                                                             textOverflow: 'ellipsis',
                                                             overflow: 'hidden',
@@ -699,8 +710,8 @@ const AppInterface: React.FC<AppViewProps> = ({
                                                           }} title={fileName}>
                                                             {fileName}
                                                           </span>
-                                                          <span style={{ 
-                                                            color: '#9ca3af', 
+                                                          <span style={{
+                                                            color: '#9ca3af',
                                                             fontSize: '12px',
                                                             whiteSpace: 'nowrap',
                                                             flexShrink: 0
@@ -708,7 +719,7 @@ const AppInterface: React.FC<AppViewProps> = ({
                                                             {file.metadata?.timeRequested?.toDate().toLocaleTimeString() || ''}
                                                           </span>
                                                         </div>
-                                                        <a 
+                                                        <a
                                                           href={file.metadata?.uri}
                                                           download={file.metadata?.fileName?.split('/').pop() || 'download'}
                                                           style={{
@@ -742,7 +753,7 @@ const AppInterface: React.FC<AppViewProps> = ({
                                                   })}
                                                 </div>
                                               )}
-                                              
+
                                               {/* Show message if no files are found in the current view */}
                                               {passFiles.length === 0 && !isLoading && (
                                                 <p>
@@ -769,6 +780,73 @@ const AppInterface: React.FC<AppViewProps> = ({
           </section>
         )}
       </main>
+
+      {/* Add pagination controls as sticky footer - only show when data is loaded */}
+      {pagination && passSummaries.length > 0 && (
+        <div className="pagination-container">
+          <div className="pagination-controls" style={{
+            display: 'flex',
+            justifyContent: 'center',
+            width: '100%',
+            gap: '4px'
+          }}>
+            <button
+              className="pagination-button"
+              disabled={pagination.currentPage === 1}
+              onClick={() => pagination.onPageChange(1)}
+            >
+              &laquo; First
+            </button>
+            <button
+              className="pagination-button"
+              disabled={pagination.currentPage === 1}
+              onClick={() => pagination.onPageChange(pagination.currentPage - 1)}
+            >
+              &lt; Prev
+            </button>
+
+            {/* Page numbers */}
+            {(() => {
+              const pages = [];
+              const maxVisible = 5; // Max visible page numbers
+              let startPage = Math.max(1, pagination.currentPage - Math.floor(maxVisible / 2));
+              let endPage = Math.min(pagination.totalPages, startPage + maxVisible - 1);
+
+              if (endPage - startPage + 1 < maxVisible) {
+                startPage = Math.max(1, endPage - maxVisible + 1);
+              }
+
+              for (let i = startPage; i <= endPage; i++) {
+                pages.push(
+                  <button
+                    key={i}
+                    className={`pagination-button ${pagination.currentPage === i ? 'active' : ''}`}
+                    onClick={() => pagination.onPageChange(i)}
+                  >
+                    {i}
+                  </button>
+                );
+              }
+              return pages;
+            })()}
+
+            <button
+              className="pagination-button"
+              disabled={pagination.currentPage === pagination.totalPages}
+              onClick={() => pagination.onPageChange(pagination.currentPage + 1)}
+            >
+              Next &gt;
+            </button>
+            <button
+              className="pagination-button"
+              disabled={pagination.currentPage === pagination.totalPages}
+              onClick={() => pagination.onPageChange(pagination.totalPages)}
+            >
+              Last &raquo;
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Add the modal at the end */}
       {beforeAfterModal && (
